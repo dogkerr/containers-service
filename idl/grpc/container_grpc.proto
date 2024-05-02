@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+
+option go_package = "container-service/pb";
+
+message HelloResp{
+    string message=1;
+}
+message HelloReq {
+    string messageReq = 1;
+}
+
+
+service ContainerService { 
+    rpc Hello(HelloReq) returns (HelloResp);
+}
