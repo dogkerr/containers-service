@@ -19,6 +19,7 @@ func main() {
 	opts = append(opts, kitexServer.WithMetaHandler(transmeta.ServerHTTP2Handler))
 	opts = append(opts, kitexServer.WithServiceAddr(addr))
 	svr := pb.NewServer(new(ContainerServiceImpl), opts...) // kitex rpc server
+
 	go func() {
 		err := svr.Run()
 		if err != nil {

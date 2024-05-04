@@ -6,6 +6,9 @@ require (
 	github.com/cloudwego/fastpb v0.0.4
 	github.com/cloudwego/hertz v0.8.1
 	github.com/cloudwego/kitex v0.9.1
+	github.com/golang-jwt/jwt/v4 v4.4.1
+	github.com/hertz-contrib/jwt v1.0.2
+	github.com/starkbank/ecdsa-go/v2 v2.0.0
 	google.golang.org/protobuf v1.34.0
 )
 

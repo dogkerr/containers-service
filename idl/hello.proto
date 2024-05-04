@@ -17,7 +17,9 @@ message HelloResp {
 }
 
 service HelloService {
+
    rpc Method1(HelloReq) returns(HelloResp) {
-      option (api.get) = "/helloLintang";
+      option (api.get) = "/api/v1/hello/sayHello";
    }
+
 }
