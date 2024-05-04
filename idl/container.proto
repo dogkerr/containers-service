@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+/*
+
+gak usah pake ini
+mending pake struct biasa , performa nya sama aja  (rps/qps yang bisa dihandle sama aja kalau gak pake generated proto)
+
+*/
+package containerLintang;
+
+option go_package = "conatiner";
+import "api.proto";
+
+message Resource {
+    int64 cpus =1;
+    int64 memory =2;
+}
+
+
+message CreateServicereq  {
+    string Name = 1[(api.body)="name"];
+    string image = 2[(api.body)="image"];
+    map<string,string> labels = 3[(api.body)="labels"];
+    repeated string env = 4[(api.body)="env"];
+    Resource limit = 5[(api.body)="resource_limit"];
+    Resource reserve = 6[(api.body)="resource_reservation"];
+    
+}
+
+

@@ -29,6 +29,7 @@ type ContainerLifecycle struct {
 }
 
 type Container struct {
+	// ini cuma id row di table container
 	ID                  uuid.UUID            `json:"id"`
 	UserID              uuid.UUID            `json:"user_id"`
 	ImageURL            string               `json:"image_url"`
@@ -39,5 +40,36 @@ type Container struct {
 	CreatedTime         time.Time            `json:"created_at"`
 	TerminatedTime      time.Time            `json:"terminated_time"`
 	ContainerLifecycles []ContainerLifecycle `json:"all_container_lifecycles"`
-	ServiceID           string               `json:"serviceId"`
+	// id dari containernya/servicenya
+	ServiceID string `json:"serviceId"`
+
+	/// field dibawah ini cuma dari docker engine && bukan dari db
+	Labels      map[string]string `json:"labels"`
+	Replica     uint64            `json:"replica"`
+	Limit       Resource          `json:"limit"`
+	Reservation Resource          `json:"reservation,omitempty"`
+	Image       string            `json:"image"`
+	Env         []string          `json:"env"`
+	Endpoint    []Endpoint        `json:"endpoint"`
 }
+type Endpoint struct {
+	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0"`
+	PublishedPort uint64 `json:"published_port,required" vd:"$<65555 && $>0"`
+	Protocol      string `json:"protocol" default:"tcp" vd:"in($, 'tcp','udp','sctp')" `
+}
+
+// Resource
+// @Description ini resource cpus & memory buat setiap container nya
+type Resource struct {
+	// cpu dalam milicpu (1000 cpus = 1 vcpu)
+	CPUs int64 `json:"cpus" vd:"len($)<20000 && $>0"`
+	// memory dalam satuan mb (1000mb = 1gb)
+	Memory int64 `json:"memory" vd:"len($)<50000  && $>0"`
+}
+
+// type container struct {
+// 	CreatedAt   time.Time         `json:"created_at"`
+// 	ID          string            `json:"id"`
+// 	Name        string            `json:"name"`
+
+// }

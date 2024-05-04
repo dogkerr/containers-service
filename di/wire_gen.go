@@ -11,6 +11,7 @@ import (
 	"dogker/lintang/container-service/biz/dal/messagebroker"
 	"dogker/lintang/container-service/biz/router"
 	"dogker/lintang/container-service/biz/service"
+	"dogker/lintang/container-service/biz/webapi"
 	"dogker/lintang/container-service/config"
 	"github.com/google/wire"
 )
@@ -19,10 +20,11 @@ import (
 
 func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config) *service.ContainerService {
 	containerRepository := db.NewContainerRepo(pg)
-	containerService := service.NewContainerService(containerRepository)
+	dockerEngineAPI := webapi.CreateNewDockerEngineAPI()
+	containerService := service.NewContainerService(containerRepository, dockerEngineAPI)
 	return containerService
 }
 
 // wire.go:
 
-var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, db.NewContainerRepo, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)))
+var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)))

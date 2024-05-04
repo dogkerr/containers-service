@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/app/server/binding"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/cloudwego/kitex/pkg/transmeta"
 	kitexServer "github.com/cloudwego/kitex/server"
@@ -36,7 +37,10 @@ func main() {
 	pg := dal.InitPg(cfg) // init postgres & rabbitmq
 	rmq := dal.InitRmq(cfg)
 
-	h := server.Default()
+	// validation error custom
+	customValidationErr := CreateCustomValidationError()
+
+	h := server.Default(server.WithValidateConfig(customValidationErr))
 	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:6000")
 	var opts []kitexServer.Option
 	opts = append(opts, kitexServer.WithMetaHandler(transmeta.ServerHTTP2Handler))
@@ -109,4 +113,32 @@ func getLogWriter(maxBackup, maxAge int) (writeSyncerStdout zapcore.WriteSyncer,
 	stdout := zapcore.AddSync(os.Stdout)
 
 	return stdout, file
+}
+
+type ValidateError struct {
+	ErrType string `json:"error_type"`
+	 FailField string `json:"validateion_fail_field"`
+	 Msg string 	`json:"cause"`
+}
+
+// Error implements error interface.
+func (e *ValidateError) Error() string {
+	if e.Msg != "" {
+		return e.ErrType + ": expr_path=" + e.FailField + ", cause=" + e.Msg
+	}
+	return e.ErrType + ": expr_path=" + e.FailField + ", cause=invalid"
+}
+
+func CreateCustomValidationError() *binding.ValidateConfig {
+	validateConfig := &binding.ValidateConfig{}
+	validateConfig.SetValidatorErrorFactory(func(failField, msg string) error {
+		err := ValidateError{
+			ErrType:   "validateErr",
+			FailField: "[validateFailField]: " + failField,
+			Msg:       "[validateErrMsg]: " + msg,
+		}
+
+		return &err
+	})
+	return validateConfig
 }

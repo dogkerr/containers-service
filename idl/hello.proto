@@ -9,7 +9,7 @@ import "api.proto";
 
 
 message HelloReq {
-   string Name = 1[(api.query)="name"];
+   string Name = 1[(api.query)="name,required", (api.vd)="$!='anjing'"];
 }
 
 message HelloResp {
