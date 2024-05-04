@@ -38,7 +38,7 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 	}
 	ECDSAPubKey := publicKey.(*ecdsa.PublicKey)
 	JwtMiddleware, err := jwt.New(&jwt.HertzJWTMiddleware{
-		Realm:       "test zone",
+		Realm:       "dogker digital signature public key auth",
 		Key:         []byte("secret key"),
 		Timeout:     time.Hour,
 		MaxRefresh:  time.Hour,
