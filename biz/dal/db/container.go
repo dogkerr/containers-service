@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/gofrs/uuid"
 	googleuuid "github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type ContainerRepository struct {
@@ -24,17 +25,17 @@ func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID s
 	q := queries.New(r.db.Pool)
 	uid, err := uuid.FromString(userID)
 	if err != nil {
-		hlog.Error(err)
-		return nil, err
+		zap.L().Error("uuid.FromString(userID)", zap.Error(err))
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	ctrs, err := q.GetAllUserContainers(ctx, googleuuid.UUID(uid))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			hlog.Debug("container milik userId: "+userID+"tidak ada", err)
-			return nil, domain.ErrNotFound
+			return nil, domain.WrapErrorf(err, domain.ErrNotFound, "container milik userId: "+userID+"tidak ada")
 		}
-		hlog.Error(err)
-		return nil, err
+		zap.L().Error("q.GetAllUserContainers(ctx, googleuuid.UUID(uid))", zap.Error(err))
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	var res []domain.Container
 	for _, ctr := range ctrs {
@@ -85,9 +86,9 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 	if err != nil {
 		if err == sql.ErrNoRows {
 			hlog.Debug("container dengan id: "+serviceID+" tidak ada di database", err)
-			return nil, domain.ErrNotFound
+			return nil, domain.WrapErrorf(err, domain.ErrNotFound, "container dengan id: "+serviceID+" tidak ada di database")
 		}
-		return nil, err
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	var res domain.Container
 	for _, ctr := range ctrs {
@@ -135,8 +136,8 @@ func (r *ContainerRepository) Insert(ctx context.Context, c *domain.Container) (
 	q := queries.New(r.db.Pool)
 	uid, err := uuid.FromString(c.UserID)
 	if err != nil {
-		hlog.Error(err)
-		return nil, err
+		zap.L().Error("uuid.FromString(c.UserID)", zap.Error(err))
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	ctr, err := q.InsertContainer(ctx, queries.InsertContainerParams{
 		UserID:         googleuuid.UUID(uid),
@@ -166,8 +167,8 @@ func (r *ContainerRepository) Update(ctx context.Context, c *domain.Container) e
 		CreatedTime:    c.CreatedTime,
 	})
 	if err != nil {
-		hlog.Error(err)
-		return err
+		zap.L().Error(" q.UpdateContainer", zap.Error(err))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	return nil
 }
@@ -176,8 +177,8 @@ func (r *ContainerRepository) Delete(ctx context.Context, serviceID string) erro
 	q := queries.New(r.db.Pool)
 	err := q.DeleteContainer(ctx, serviceID)
 	if err != nil {
-		hlog.Error(err)
-		return err
+		zap.L().Error("q.DeleteContainer", zap.Error(err))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	return nil
 }
@@ -186,8 +187,8 @@ func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.Con
 	q := queries.New(r.db.Pool)
 	cID, err := uuid.FromString(c.ID)
 	if err != nil {
-		hlog.Error(err, "uuid.FromString(c.ID)", c.ID)
-		return nil, err
+		zap.L().Error("uuid.FromString(c.ID)", zap.Error(err), zap.String("cid", c.ID))
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	ctr, err := q.InsertContainerLifecycle(ctx, queries.InsertContainerLifecycleParams{
 		ContainerID: googleuuid.NullUUID{Valid: true, UUID: googleuuid.UUID(cID)},
@@ -197,8 +198,8 @@ func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.Con
 	})
 
 	if err != nil {
-		hlog.Error(err)
-		return nil, err
+		zap.L().Error("q.InsertContainerLifecycle", zap.Error(err))
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	res := &domain.ContainerLifecycle{
 		ID:          ctr.ID.String(),
@@ -215,14 +216,14 @@ func (r *ContainerRepository) GetLifecycle(ctx context.Context, lifeId string) (
 	q := queries.New(r.db.Pool)
 	iuid, err := uuid.FromString(lifeId)
 	if err != nil {
-		return nil, err
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	life, err := q.GetContainerLifecycle(ctx, googleuuid.UUID(iuid))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, domain.ErrNotFound
+			return nil, domain.WrapErrorf(err, domain.ErrNotFound, "container lifecycles dengan id: "+lifeId+" tidak ada dalam database")
 		}
-		return nil, err
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	var stopTime time.Time
 	if life.StopTime.Valid {
@@ -252,7 +253,7 @@ func (r *ContainerRepository) UpdateLifecycle(ctx context.Context, lifeId string
 		Replica:  int32(replica),
 	})
 	if err != nil {
-		return err
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	return nil
 }

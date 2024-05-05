@@ -5,7 +5,7 @@ import (
 	"dogker/lintang/container-service/biz/domain"
 	"time"
 
-	"github.com/cloudwego/hertz/pkg/common/hlog"
+	"go.uber.org/zap"
 )
 
 type ContainerRepository interface {
@@ -42,7 +42,7 @@ func (s *ContainerService) Hello(ctx context.Context) (string, error) {
 func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Container) (string, time.Time, *domain.ContainerLifecycle, error) {
 	serviceId, err := s.dockerAPI.CreateService(ctx, d)
 	if err != nil {
-		hlog.Error(err)
+		zap.L().Error("s.dockerAPI.CreateService", zap.Error(err))
 		return "", time.Now(), nil, err
 	}
 

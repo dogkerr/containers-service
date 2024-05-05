@@ -12,6 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
 	github.com/hertz-contrib/jwt v1.0.2
+	github.com/hertz-contrib/logger/accesslog v0.0.0-20240128134225-6b18af47a115
 	github.com/hertz-contrib/logger/zap v1.1.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.5.5

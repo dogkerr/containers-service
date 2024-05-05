@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"dogker/lintang/container-service/biz/dal"
 	"dogker/lintang/container-service/biz/router"
 	"dogker/lintang/container-service/config"
@@ -11,13 +12,16 @@ import (
 	"dogker/lintang/container-service/rpc"
 	"net"
 	"os"
+	"time"
 
+	hertzzap "github.com/hertz-contrib/logger/zap"
+
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/app/server/binding"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/cloudwego/kitex/pkg/transmeta"
 	kitexServer "github.com/cloudwego/kitex/server"
-	hertzzap "github.com/hertz-contrib/logger/zap"
 	"github.com/natefinch/lumberjack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -30,7 +34,7 @@ func main() {
 	logsCores := initZapLogger(cfg)
 	defer logsCores.Sync()
 	hlog.SetLogger(logsCores)
-	hlog.Info("Halo dunia")
+	zap.L().Info("halo dunia", zap.String("nama", "lintang"))
 
 	if err != nil {
 		hlog.Fatalf("Config error: %s", err)
@@ -38,6 +42,7 @@ func main() {
 	pg := dal.InitPg(cfg) // init postgres & rabbitmq
 	rmq := dal.InitRmq(cfg)
 
+	
 	// validation error custom
 	customValidationErr := CreateCustomValidationError()
 
@@ -50,6 +55,7 @@ func main() {
 	// ctrKitex := NewContainerService()
 	// svr := pb.NewServer(new(ContainerServiceImpl), opts...) // kitex rpc server
 	svr := pb.NewServer(rpc.NewContainerService(), opts...)
+	h.Use(AccessLog())
 	go func() {
 		err := svr.Run()
 		if err != nil {
@@ -63,6 +69,9 @@ func main() {
 	h.Spin()
 }
 
+var lg *zap.Logger
+
+// pake hertzlogger gak kayak pake uber/zap logger beneran
 func initZapLogger(cfg *config.Config) *hertzzap.Logger {
 	productionCfg := zap.NewProductionEncoderConfig()
 	productionCfg.TimeKey = "timestamp"
@@ -98,7 +107,14 @@ func initZapLogger(cfg *config.Config) *hertzzap.Logger {
 		prodCfg,
 		devCfg,
 	}
-
+	coreConsole := zapcore.NewCore(consoleEncoder, writeSyncerStdout, logDevLevel)
+	coreFile := zapcore.NewCore(fileEncoder, writeSyncerFile, logLevelProd)
+	core := zapcore.NewTee(
+		coreConsole,
+		coreFile,
+	)
+	lg = zap.New(core)
+	zap.ReplaceGlobals(lg)
 	prodAndDevLogger := hertzzap.NewLogger(hertzzap.WithZapOptions(zap.WithFatalHook(zapcore.WriteThenPanic)),
 		hertzzap.WithCores(logsCores...))
 	return prodAndDevLogger
@@ -142,4 +158,25 @@ func CreateCustomValidationError() *binding.ValidateConfig {
 		return &err
 	})
 	return validateConfig
+}
+
+// accessLogger
+func AccessLog() app.HandlerFunc {
+	return func(c context.Context, ctx *app.RequestContext) {
+		start := time.Now()
+		path := string(ctx.Request.URI().Path()[:])
+		query := string(ctx.Request.URI().QueryString()[:])
+		ctx.Next(c)
+		cost := time.Since(start)
+		lg.Info(path,
+			zap.Int("status", ctx.Response.StatusCode()),
+			zap.String("method", string(ctx.Request.Header.Method())),
+			zap.String("path", path),
+			zap.String("query", query),
+			zap.String("ip", ctx.ClientIP()),
+			zap.String("user-agent", string(ctx.Host())),
+			zap.String("errors", ctx.Errors.String()),
+			zap.Duration("cost", cost),
+		)
+	}
 }

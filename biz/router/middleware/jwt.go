@@ -12,4 +12,5 @@ func Protected() []app.HandlerFunc {
 	return []app.HandlerFunc{
 		mwJwt.MiddlewareFunc(),
 	}
+
 }

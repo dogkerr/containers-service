@@ -10,6 +10,7 @@ import (
 	"dogker/lintang/container-service/biz/domain"
 	"dogker/lintang/container-service/biz/model/basic/hello"
 	"dogker/lintang/container-service/biz/router/middleware"
+	"errors"
 	"net/http"
 	"time"
 
@@ -48,7 +49,6 @@ type ResponseError struct {
 	Message string `json:"message"`
 }
 
-
 type endpoint struct {
 	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0"`
 	PublishedPort uint64 `json:"published_port,required" vd:"$<65555 && $>0"`
@@ -60,8 +60,8 @@ type createServiceReq struct {
 	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:.-]*$')"`
 	Labels      map[string]string `json:"labels,omitempty" vd:"range($, #k < 50 && #v < 50) || !$"`
 	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$ "`
-	Limit       domain.Resource          `json:"limit,required"`
-	Reservation domain.Resource          `json:"reservation,omitempty"`
+	Limit       domain.Resource   `json:"limit,required"`
+	Reservation domain.Resource   `json:"reservation,omitempty"`
 	Replica     uint64            `json:"replica,required" vd:"$<1000 && $>0"`
 	Endpoint    []endpoint        `json:"endpoint,required"`
 }
@@ -112,8 +112,8 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 			CreatedTime: createdTime,
 			ServiceID:   svcIdResp,
 			Name:        req.Name,
-			Labels: req.Labels,
-			Replica: 3,
+			Labels:      req.Labels,
+			Replica:     3,
 			Limit: domain.Resource{
 				CPUs:   req.Limit.CPUs,
 				Memory: req.Limit.Memory,
@@ -153,18 +153,22 @@ func getStatusCode(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
-
-	// logrus.Error(err)
-	switch err {
-	case domain.ErrInternalServerError:
+	var ierr *domain.Error
+	if !errors.As(err, &ierr) {
 		return http.StatusInternalServerError
-	case domain.ErrNotFound:
-		return http.StatusNotFound
-	case domain.ErrConflict:
-		return http.StatusConflict
-	case domain.ErrBadParamInput:
-		return http.StatusBadRequest
-	default:
-		return http.StatusInternalServerError
+	} else {
+		switch ierr.Code() {
+		case domain.ErrInternalServerError:
+			return http.StatusInternalServerError
+		case domain.ErrNotFound:
+			return http.StatusNotFound
+		case domain.ErrConflict:
+			return http.StatusConflict
+		case domain.ErrBadParamInput:
+			return http.StatusBadRequest
+		default:
+			return http.StatusBadRequest
+		}
 	}
+
 }

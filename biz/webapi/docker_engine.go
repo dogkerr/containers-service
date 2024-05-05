@@ -3,11 +3,14 @@ package webapi
 import (
 	"context"
 	"dogker/lintang/container-service/biz/domain"
+	"fmt"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+	"go.uber.org/zap"
 )
 
 type DockerEngineAPI struct {
@@ -92,8 +95,13 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 		},
 	}, types.ServiceCreateOptions{})
 	if err != nil {
-		hlog.Error(" d.Cli.ServiceCreate", err)
-		return "", err
+		fmt.Println(c.Endpoint[0].PublishedPort)
+		if strings.Contains(err.Error(), "already in use") {
+			return "", domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already in use", c.Endpoint[0].PublishedPort))
+		}
+		// hlog.Error(" d.Cli.ServiceCreate", err)
+		zap.L().Error(" d.Cli.ServiceCreate", zap.Error(err))
+		return "", domain.WrapErrorf(err, domain.ErrInternalServerError, " internal server error")
 	}
 
 	return resp.ID, nil
