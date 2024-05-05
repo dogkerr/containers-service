@@ -19,6 +19,8 @@ type (
 
 		GRPC
 		RabbitMQ
+
+		Docker
 	}
 
 	// App -.
@@ -60,6 +62,10 @@ type (
 	RabbitMQ struct {
 		RMQAddress string `json:"rabbitmqAddress" yaml:"rmqAddress" env:"RABBITMQ_ADDRESS"`
 	}
+
+	Docker struct {
+		DockerHost string `json:"docker_host" env:"DOCKER_HOST"`
+	}
 )
 
 // NewConfig returns app config.
@@ -69,8 +75,8 @@ func NewConfig() (*Config, error) {
 	if err != nil {
 		log.Println(err)
 	}
-	// err = cleanenv.ReadConfig(path+".env", cfg) // buat di doker , ../.env kalo debug (.env kalo docker)
-	err = cleanenv.ReadConfig(path+"/local.env", cfg) // local run
+	err = cleanenv.ReadConfig(path+".env", cfg) // buat di doker , ../.env kalo debug (.env kalo docker)
+	// err = cleanenv.ReadConfig(path+"/local.env", cfg) // local run
 
 	if err != nil {
 		return nil, fmt.Errorf("config error: %w", err)

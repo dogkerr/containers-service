@@ -53,6 +53,7 @@ func main() {
 
 
 #### cara run
+lokal
 ```
 
 sh build.sh
@@ -60,4 +61,9 @@ sh build.sh
  ```
 
 
+pakai docker compose 
+```
+docker compose -f docker-compose-app.yaml up -d
+
+```
 

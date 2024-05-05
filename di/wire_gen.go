@@ -20,7 +20,7 @@ import (
 
 func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config) *service.ContainerService {
 	containerRepository := db.NewContainerRepo(pg)
-	dockerEngineAPI := webapi.CreateNewDockerEngineAPI()
+	dockerEngineAPI := webapi.CreateNewDockerEngineAPI(cfg)
 	containerService := service.NewContainerService(containerRepository, dockerEngineAPI)
 	return containerService
 }

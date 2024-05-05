@@ -8,9 +8,6 @@ import (
 	"dogker/lintang/container-service/biz/router"
 	"dogker/lintang/container-service/config"
 	"dogker/lintang/container-service/di"
-	pb "dogker/lintang/container-service/kitex_gen/container-service/pb/containerservice"
-	"dogker/lintang/container-service/rpc"
-	"net"
 	"os"
 	"time"
 
@@ -20,8 +17,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/app/server/binding"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
-	"github.com/cloudwego/kitex/pkg/transmeta"
-	kitexServer "github.com/cloudwego/kitex/server"
 	"github.com/natefinch/lumberjack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -46,21 +41,8 @@ func main() {
 	customValidationErr := CreateCustomValidationError()
 
 	h := server.Default(server.WithValidateConfig(customValidationErr))
-	addr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:6000")
-	var opts []kitexServer.Option
-	opts = append(opts, kitexServer.WithMetaHandler(transmeta.ServerHTTP2Handler))
-	opts = append(opts, kitexServer.WithServiceAddr(addr))
 
-	// ctrKitex := NewContainerService()
-	// svr := pb.NewServer(new(ContainerServiceImpl), opts...) // kitex rpc server
-	svr := pb.NewServer(rpc.NewContainerService(), opts...)
 	h.Use(AccessLog())
-	go func() {
-		err := svr.Run()
-		if err != nil {
-			hlog.Fatal(err)
-		}
-	}()
 
 	cSvc := di.InitContainerService(pg, rmq, cfg)
 

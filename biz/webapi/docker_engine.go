@@ -3,6 +3,7 @@ package webapi
 import (
 	"context"
 	"dogker/lintang/container-service/biz/domain"
+	"dogker/lintang/container-service/config"
 	"fmt"
 	"strings"
 	"time"
@@ -19,8 +20,8 @@ type DockerEngineAPI struct {
 	Cli *client.Client
 }
 
-func CreateNewDockerEngineAPI() *DockerEngineAPI {
-	apiclient, err := client.NewClientWithOpts(client.WithHost("unix:///var/run/docker.sock"), client.WithAPIVersionNegotiation())
+func CreateNewDockerEngineAPI(cfg *config.Config) *DockerEngineAPI {
+	apiclient, err := client.NewClientWithOpts(client.WithHost(cfg.Docker.DockerHost), client.WithAPIVersionNegotiation())
 
 	if err != nil {
 		hlog.Fatal("client.NewClientWithOpts ", err)
