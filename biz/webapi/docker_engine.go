@@ -38,7 +38,7 @@ bearrti ke nano cpu -> cpus * 10^6
 */
 
 func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container) (string, error) {
-
+	// convert ports dari domain.Container ke []swarm.PortConfig
 	var portsConfig []swarm.PortConfig
 	for _, v := range c.Endpoint {
 		portsConfig = append(portsConfig, swarm.PortConfig{
@@ -47,6 +47,7 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 			Protocol:      swarm.PortConfigProtocol(v.Protocol),
 		})
 	}
+	// tambahin label user_id ke container labels
 	if len(c.Labels) == 0 {
 		var ownLabel map[string]string = map[string]string{"user_id": c.UserID}
 		c.Labels = ownLabel
@@ -55,6 +56,7 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 		c.Labels["user_id"] = c.UserID
 	}
 
+	// create docker swarm service
 	resp, err := d.Cli.ServiceCreate(ctx, swarm.ServiceSpec{
 		TaskTemplate: swarm.TaskSpec{
 
@@ -65,8 +67,8 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 			},
 			Resources: &swarm.ResourceRequirements{
 				Limits: &swarm.Limit{
-					NanoCPUs:    c.Limit.CPUs * 1000000,
-					MemoryBytes: c.Limit.Memory * 1000000,
+					NanoCPUs:    c.Limit.CPUs * 1000000,   // milicpu to nanocpu
+					MemoryBytes: c.Limit.Memory * 1000000, // mb to bytes
 				},
 				Reservations: &swarm.Resources{
 					NanoCPUs:    c.Reservation.CPUs * 1000000,
@@ -329,7 +331,7 @@ func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFr
 
 			ContainerSpec: &swarm.ContainerSpec{
 				Image:  svc.Spec.TaskTemplate.ContainerSpec.Image,
-				Labels: svc.Spec.Labels,
+				Labels: svc.Spec.TaskTemplate.ContainerSpec.Labels,
 				Env:    svc.Spec.TaskTemplate.ContainerSpec.Env,
 			},
 			Resources: &swarm.ResourceRequirements{
@@ -448,7 +450,7 @@ func (d *DockerEngineAPI) Stop(ctx context.Context, ctrID string, userID string,
 
 			ContainerSpec: &swarm.ContainerSpec{
 				Image:  svc.Spec.TaskTemplate.ContainerSpec.Image,
-				Labels: svc.Spec.Labels,
+				Labels: svc.Spec.TaskTemplate.ContainerSpec.Labels,
 				Env:    svc.Spec.TaskTemplate.ContainerSpec.Env,
 			},
 			Resources: &swarm.ResourceRequirements{
@@ -502,4 +504,136 @@ func (d *DockerEngineAPI) Delete(ctx context.Context, ctrID string) error {
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	return nil
+}
+
+func (d *DockerEngineAPI) Update(ctx context.Context, ctrID string, c *domain.Container, userID string) (err error) {
+	// get existing container dg id=ctrID buat dapetin container version Index (dibutuhkan pas update service)
+	svc, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
+	if err != nil {
+		// munngkin emang service dg id ctrID gak ada di docker
+		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+	}
+
+	// convert ports dari domain.Container ke []swarm.PortConfig
+	var portsConfig []swarm.PortConfig
+	for _, v := range c.Endpoint {
+		portsConfig = append(portsConfig, swarm.PortConfig{
+			TargetPort:    uint32(v.TargetPort),
+			PublishedPort: uint32(v.PublishedPort),
+			Protocol:      swarm.PortConfigProtocol(v.Protocol),
+		})
+	}
+
+	// update data container di docker
+	_, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
+		TaskTemplate: swarm.TaskSpec{
+
+			ContainerSpec: &swarm.ContainerSpec{
+				Image:  c.Image,
+				Labels: c.Labels,
+				Env:    c.Env,
+			},
+			Resources: &swarm.ResourceRequirements{
+				Limits: &swarm.Limit{
+					NanoCPUs:    c.Limit.CPUs * 1000000,
+					MemoryBytes: c.Limit.Memory * 1000000,
+				},
+				Reservations: &swarm.Resources{
+					NanoCPUs:    c.Reservation.CPUs * 1000000,
+					MemoryBytes: c.Reservation.Memory * 1000000,
+				},
+			},
+			LogDriver: &swarm.Driver{
+				Name: "loki",
+				Options: map[string]string{
+					"loki-url":             "http://localhost:3100/loki/api/v1/push",
+					"loki-retries":         "5",
+					"loki-batch-size":      "400",
+					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+				},
+			},
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+		},
+		Annotations: swarm.Annotations{
+			Name:   c.Name,
+			Labels: c.Labels,
+		},
+		Mode: swarm.ServiceMode{
+			Replicated: &swarm.ReplicatedService{
+				Replicas: &c.Replica,
+			},
+		},
+		EndpointSpec: &swarm.EndpointSpec{
+			Ports: portsConfig,
+		},
+	}, types.ServiceUpdateOptions{})
+	if err != nil {
+		fmt.Println(c.Endpoint[0].PublishedPort)
+		if strings.Contains(err.Error(), "already in use") {
+			return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already in use", c.Endpoint[0].PublishedPort))
+		}
+		// hlog.Error(" d.Cli.ServiceCreate", err)
+		zap.L().Error(" d.Cli.ServiceCreate", zap.Error(err))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, " internal server error")
+	}
+	err = nil
+	return
+}
+
+// ScaleX
+// @Description Horizontal Scaling swarm service dg id=ctrID
+func (d *DockerEngineAPI) ScaleX(ctx context.Context, ctrID string, replica uint64, userID string) error {
+	svc, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
+	if err != nil {
+		// munngkin emang service dg id ctrID gak ada di docker
+		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+	}
+
+	_, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
+		TaskTemplate: swarm.TaskSpec{
+
+			ContainerSpec: &swarm.ContainerSpec{
+				Image:  svc.Spec.TaskTemplate.ContainerSpec.Image,
+				Labels: svc.Spec.TaskTemplate.ContainerSpec.Labels,
+				Env:    svc.Spec.TaskTemplate.ContainerSpec.Env,
+			},
+			Resources: &swarm.ResourceRequirements{
+				Limits: &swarm.Limit{
+					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Limits.NanoCPUs,
+					MemoryBytes: svc.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
+				},
+				Reservations: &swarm.Resources{
+					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Reservations.NanoCPUs,
+					MemoryBytes: svc.Spec.TaskTemplate.Resources.Reservations.MemoryBytes,
+				},
+			},
+			LogDriver: &swarm.Driver{
+				Name: "loki",
+				Options: map[string]string{
+					"loki-url":             "http://localhost:3100/loki/api/v1/push",
+					"loki-retries":         "5",
+					"loki-batch-size":      "400",
+					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+				},
+			},
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+		},
+		Annotations: svc.Spec.Annotations,
+		Mode: swarm.ServiceMode{
+			Replicated: &swarm.ReplicatedService{
+				Replicas: &replica, // horizontal scale /tambah replica
+			},
+		},
+		EndpointSpec: svc.Spec.EndpointSpec,
+	}, types.ServiceUpdateOptions{})
+
+	if err != nil {
+		zap.L().Error("ServiceUpdate docker cli api", zap.Error(err))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+
+	return nil
+
 }

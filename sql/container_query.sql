@@ -67,4 +67,12 @@ WHERE id=$1;
 
 
 
+-- name: UpdateContainerLifeCycleWithoutStopTime :exec
+UPDATE container_lifecycles
+SET 
+	replica=$2
+WHERE id=$1;
+
+
+
 

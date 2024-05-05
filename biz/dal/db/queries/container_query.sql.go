@@ -364,6 +364,23 @@ func (q *Queries) UpdateContainer(ctx context.Context, arg UpdateContainerParams
 	return err
 }
 
+const updateContainerLifeCycleWithoutStopTime = `-- name: UpdateContainerLifeCycleWithoutStopTime :exec
+UPDATE container_lifecycles
+SET 
+	replica=$2
+WHERE id=$1
+`
+
+type UpdateContainerLifeCycleWithoutStopTimeParams struct {
+	ID      uuid.UUID
+	Replica int32
+}
+
+func (q *Queries) UpdateContainerLifeCycleWithoutStopTime(ctx context.Context, arg UpdateContainerLifeCycleWithoutStopTimeParams) error {
+	_, err := q.db.ExecContext(ctx, updateContainerLifeCycleWithoutStopTime, arg.ID, arg.Replica)
+	return err
+}
+
 const updateContainerLifecycle = `-- name: UpdateContainerLifecycle :exec
 UPDATE container_lifecycles
 SET 

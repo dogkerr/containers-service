@@ -18,6 +18,7 @@ type ContainerRepository interface {
 	InsertLifecycle(ctx context.Context, c *domain.ContainerLifecycle) (*domain.ContainerLifecycle, error)
 	GetLifecycle(ctx context.Context, lifeId string) (*domain.ContainerLifecycle, error)
 	UpdateLifecycle(ctx context.Context, lifeId string, stopTime time.Time, status domain.ContainerStatus, replica uint32) error
+	UpdateCtrLifeCycleWithoutStopTime(ctx context.Context, replica uint64, lifeID string) error
 }
 
 type DockerEngineAPI interface {
@@ -27,6 +28,9 @@ type DockerEngineAPI interface {
 	Start(ctx context.Context, ctrID string, lastReplicaFromDB uint64, userID string, cDB *domain.Container) (*domain.Container, error)
 	Stop(ctx context.Context, ctrID string, userID string, cDB *domain.Container) error
 	Delete(ctx context.Context, ctrID string) error
+	Update(ctx context.Context, ctrID string, c *domain.Container, userID string) (err error)
+	ScaleX(ctx context.Context, ctrID string, replica uint64, userID string) error
+	
 }
 
 type ContainerService struct {
@@ -190,10 +194,70 @@ func (s *ContainerService) DeleteContainer(ctx context.Context, ctrID string, us
 	ctrDB.TerminatedTime = time.Now()
 	err = s.containerRepo.Update(ctx, ctrDB)
 	if err != nil {
-		return err 
+		return err
 	}
 	return nil
+}
 
+func (s *ContainerService) UpdateContainer(ctx context.Context, d *domain.Container, ctrID string, userID string) (string, error) {
+	// get ctr dari db
+	// cek apakah user yg punya containernya
+	// sekalian cek apakah container dg ctrID ada
+	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
+	if err != nil {
+		return "", err
+	}
+	if ctrDB.UserID != userID {
+		return "", domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+
+	// update container di docker
+	err = s.dockerAPI.Update(ctx, ctrID, d, userID)
+	if err != nil {
+		return "", err
+	}
+
+	// update container di db
+	d.Status = ctrDB.Status // make sure status ctr gak diubah sama user
+	d.CreatedTime = ctrDB.CreatedTime
+	d.ContainerPort = int(d.Endpoint[0].TargetPort)
+	d.PublicPort = int(d.Endpoint[0].PublishedPort)
+	err = s.containerRepo.Update(ctx, d)
+	if err != nil {
+		return "", err
+	}
+	return ctrDB.ID, nil
+}
+
+// ScaleX -.
+// @Description horizontal scaling
+func (s *ContainerService) ScaleX(ctx context.Context, userID string, ctrID string, replica uint64) error {
+	// get ctr dari db
+	// cek apakah user yg punya containernya
+	// sekalian cek apakah container dg ctrID ada
+	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
+	if err != nil {
+		return  err
+	}
+	if ctrDB.UserID != userID {
+		return  domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+
+	// horizontal scaling swarm service
+	err = s.dockerAPI.ScaleX(ctx, ctrID, replica, userID)
+	if err != nil {
+		return err 
+	}
+
+	// update field replica di tabel lifecycle 
+	// get last lifecycleID , berdasaarkan starttime terbaru
+	lifecycles := ctrDB.ContainerLifecycles
+	lifeCycleID := qSortWaktu(lifecycles).ID
+	err = s.containerRepo.UpdateCtrLifeCycleWithoutStopTime(ctx, replica, lifeCycleID)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {

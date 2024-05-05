@@ -28,6 +28,8 @@ type ContainerService interface {
 	StartContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error)
 	StopContainer(ctx context.Context, ctrID string, userID string) error
 	DeleteContainer(ctx context.Context, ctrID string, userID string) error
+	UpdateContainer(ctx context.Context, d *domain.Container, ctrID string, userID string) (string, error)
+	ScaleX(ctx context.Context, userID string, ctrID string, replica uint64) error
 }
 
 type ContainerHandler struct {
@@ -52,6 +54,8 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			// todo: post /:id/stop, delete /:id, put /:id, put /:id/scaleX
 			ctrH.POST("/:id/stop", append(middleware.Protected(), handler.StopContainer)...)
 			ctrH.DELETE("/:id", append(middleware.Protected(), handler.DeleteContainer)...)
+			ctrH.PUT("/:id", append(middleware.Protected(), handler.UpdateContainer)...)
+			ctrH.PUT("/:id/scale", append(middleware.Protected(),handler.ScaleX)...)
 		}
 	}
 }
@@ -244,7 +248,78 @@ func (m *ContainerHandler) DeleteContainer(ctx context.Context, c *app.RequestCo
 		return
 	}
 	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully deleted", req.ID)})
+}
 
+type updateRes struct {
+	Message string `json:"message"`
+}
+
+// UpdateContainer
+// @Description update container , tapi cuma update field yg ada di createServiceReq
+func (m *ContainerHandler) UpdateContainer(ctx context.Context, c *app.RequestContext) {
+	userID, _ := c.Get("userID")
+	var req createServiceReq // req body
+
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	var path getContainerReq
+	err = c.BindAndValidate(&path)
+	if err != nil {
+		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	ctrID, err := m.svc.UpdateContainer(ctx, &domain.Container{
+
+		Name:        req.Name,
+		Image:       req.Image,
+		Labels:      req.Labels,
+		Env:         req.Env,
+		Limit:       req.Limit,
+		Reservation: req.Reservation,
+		Replica:     uint64(req.Replica),
+		Endpoint:    req.Endpoint,
+	}, path.ID, userID.(string))
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, updateRes{Message: fmt.Sprintf("container %s successfully updated", ctrID)})
+}
+
+type scaleReq struct {
+	Replica uint64 `json:"replica" vd:"$<=1000 && $>=0; msg:'replica harus di antara range 0-1000'"`
+}
+
+// ScaleX
+// @Description horizontal scaling sawrm service/container
+func (m *ContainerHandler) ScaleX(ctx context.Context, c *app.RequestContext) {
+	userID, _ := c.Get("userID")
+	var req getContainerReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	var reqBody scaleReq
+	err = c.BindAndValidate(&reqBody)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	err = m.svc.ScaleX(ctx, userID.(string), req.ID, reqBody.Replica)
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, updateRes{Message: fmt.Sprintf("container %s successfully scaled", req.ID)})
 }
 
 type HelloReq struct {

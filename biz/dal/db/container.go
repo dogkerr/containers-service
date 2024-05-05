@@ -245,7 +245,8 @@ func (r *ContainerRepository) UpdateLifecycle(ctx context.Context, lifeId string
 	q := queries.New(r.db.Pool)
 	lifeIduuid, err := uuid.FromString(lifeId)
 	if err != nil {
-		return err
+		zap.L().Error("uuid fromString", zap.Error(err), zap.String("lifeID", lifeId))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	err = q.UpdateContainerLifecycle(ctx, queries.UpdateContainerLifecycleParams{
 		ID:       googleuuid.UUID(lifeIduuid),
@@ -256,5 +257,19 @@ func (r *ContainerRepository) UpdateLifecycle(ctx context.Context, lifeId string
 	if err != nil {
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
+	return nil
+}
+
+func (r *ContainerRepository) UpdateCtrLifeCycleWithoutStopTime(ctx context.Context, replica uint64, lifeID string) error {
+	q := queries.New(r.db.Pool)
+	lifeIduuid, err := uuid.FromString(lifeID)
+	if err != nil {
+		zap.L().Error("uuid fromString", zap.Error(err), zap.String("lifeID", lifeID))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+	err = q.UpdateContainerLifeCycleWithoutStopTime(ctx, queries.UpdateContainerLifeCycleWithoutStopTimeParams{
+		ID:      googleuuid.UUID(lifeIduuid),
+		Replica: int32(replica),
+	})
 	return nil
 }
