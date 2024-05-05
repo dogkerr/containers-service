@@ -228,7 +228,7 @@ INSERT INTO container_lifecycles(
 `
 
 type InsertContainerLifecycleParams struct {
-	ContainerID uuid.UUID
+	ContainerID uuid.NullUUID
 	StartTime   time.Time
 	StopTime    sql.NullTime
 	Status      ContainerStatus

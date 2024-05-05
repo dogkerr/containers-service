@@ -5,6 +5,7 @@ CREATE TABLE users (
     id  UUID DEFAULT gen_random_uuid() PRIMARY KEY ,
     username VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL, 
+    fullname VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL
 );
 
@@ -26,13 +27,12 @@ CREATE TABLE containers (
 
 CREATE TABLE container_lifecycles (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY ,
-    container_id UUID NOT NULL,
+    container_id UUID,
     start_time TIMESTAMP with time zone NOT NULL,
     stop_time TIMESTAMP with time zone,
     status container_status NOT NULL,
     replica INT NOT NULL
 );
-
 
 
 

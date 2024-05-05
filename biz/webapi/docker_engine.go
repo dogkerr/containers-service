@@ -42,8 +42,17 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 			Protocol:      swarm.PortConfigProtocol(v.Protocol),
 		})
 	}
+	if len(c.Labels) == 0 {
+		var ownLabel map[string]string = map[string]string{"user_id": c.UserID}
+		c.Labels = ownLabel
+
+	} else {
+		c.Labels["user_id"] = c.UserID
+	}
+
 	resp, err := d.Cli.ServiceCreate(ctx, swarm.ServiceSpec{
 		TaskTemplate: swarm.TaskSpec{
+
 			ContainerSpec: &swarm.ContainerSpec{
 				Image:  c.Image,
 				Labels: c.Labels,
@@ -57,6 +66,15 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 				Reservations: &swarm.Resources{
 					NanoCPUs:    c.Reservation.CPUs * 1000000,
 					MemoryBytes: c.Reservation.Memory / 1000000,
+				},
+			},
+			LogDriver: &swarm.Driver{
+				Name: "loki",
+				Options: map[string]string{
+					"loki-url":             "http://localhost:3100/loki/api/v1/push",
+					"loki-retries":         "5",
+					"loki-batch-size":      "400",
+					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + c.UserID,
 				},
 			},
 		},
@@ -77,5 +95,6 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 		hlog.Error(" d.Cli.ServiceCreate", err)
 		return "", err
 	}
+
 	return resp.ID, nil
 }

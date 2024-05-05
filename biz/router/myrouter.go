@@ -20,7 +20,7 @@ import (
 
 type ContainerService interface {
 	Hello(context.Context) (string, error)
-	CreateNewService(ctx context.Context, d *domain.Container) (string, error)
+	CreateNewService(ctx context.Context, d *domain.Container) (string, time.Time, *domain.ContainerLifecycle, error)
 }
 
 type ContainerHandler struct {
@@ -38,7 +38,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 		root.GET("/lalala", append(middleware.Protected(), handler.SayHello)...)
 		ctrH := root.Group("/containers")
 		{
-			ctrH.POST("/", handler.CreateContainer)
+			ctrH.POST("/", append(middleware.Protected(), handler.CreateContainer)...)
 		}
 	}
 }
@@ -48,14 +48,6 @@ type ResponseError struct {
 	Message string `json:"message"`
 }
 
-// Resource
-// @Description ini resource cpus & memory buat setiap container nya
-type resource struct {
-	// cpu dalam milicpu (1000 cpus = 1 vcpu)
-	CPUs int64 `json:"cpus" vd:"len($)<20000 && $>0"`
-	// memory dalam satuan mb (1000mb = 1gb)
-	Memory int64 `json:"memory" vd:"len($)<50000  && $>0"`
-}
 
 type endpoint struct {
 	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0"`
@@ -66,10 +58,10 @@ type endpoint struct {
 type createServiceReq struct {
 	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$')"`
 	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:.-]*$')"`
-	Labels      map[string]string `json:"labels,omitempty" vd:"range($, #k < 50 && #v < 50)"`
-	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) "`
-	Limit       resource          `json:"limit,required"`
-	Reservation resource          `json:"reservation"`
+	Labels      map[string]string `json:"labels,omitempty" vd:"range($, #k < 50 && #v < 50) || !$"`
+	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$ "`
+	Limit       domain.Resource          `json:"limit,required"`
+	Reservation domain.Resource          `json:"reservation,omitempty"`
 	Replica     uint64            `json:"replica,required" vd:"$<1000 && $>0"`
 	Endpoint    []endpoint        `json:"endpoint,required"`
 }
@@ -95,7 +87,9 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 			Protocol:      endp.Protocol,
 		})
 	}
-	svcIdResp, err := m.svc.CreateNewService(ctx, &domain.Container{
+	userId, _ := c.Get("userID")
+
+	svcIdResp, createdTime, ctrLife, err := m.svc.CreateNewService(ctx, &domain.Container{
 		Name:        req.Name,
 		CreatedTime: time.Now(),
 		Image:       req.Image,
@@ -105,28 +99,33 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 		Reservation: domain.Resource(req.Reservation),
 		Replica:     req.Replica,
 		Endpoint:    dEndpoint,
+		UserID:      userId.(string),
 	})
 	if err != nil {
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
 	}
 
 	resp := &createContainerResp{
 		Message: "Your Container created successfully",
 		Container: domain.Container{
-			CreatedTime: time.Now(),
+			CreatedTime: createdTime,
 			ServiceID:   svcIdResp,
 			Name:        req.Name,
-			Labels: map[string]string{
-				"userID": "lintangpkk",
-			},
+			Labels: req.Labels,
 			Replica: 3,
 			Limit: domain.Resource{
 				CPUs:   req.Limit.CPUs,
 				Memory: req.Limit.Memory,
 			},
-			Image:    req.Image,
-			Env:      []string{"lalala"},
-			Endpoint: dEndpoint,
+			Image:               req.Image,
+			Env:                 req.Env,
+			Endpoint:            dEndpoint,
+			UserID:              userId.(string),
+			Status:              domain.ContainerStatusRUN,
+			ContainerPort:       int(req.Endpoint[0].TargetPort),
+			PublicPort:          int(req.Endpoint[0].PublishedPort),
+			ContainerLifecycles: []domain.ContainerLifecycle{*ctrLife},
 		},
 	}
 	c.JSON(http.StatusOK, resp)

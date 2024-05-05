@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/hlog"
 	gojwt "github.com/golang-jwt/jwt/v4"
 	"github.com/hertz-contrib/jwt"
 )
@@ -27,7 +28,6 @@ type login struct {
 type User struct {
 	ID string
 }
-
 
 func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 	var err error
@@ -58,7 +58,10 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 			}
 		},
 		Authorizator: func(data interface{}, ctx context.Context, c *app.RequestContext) bool {
-			if _, ok := data.(*User); ok {
+			if v, ok := data.(*User); ok {
+				c.Set("userID", v.ID)
+				hlog.CtxInfof(ctx, "userId yg request" + v.ID + " " + c.GetString("userID"))
+
 				return true
 			}
 

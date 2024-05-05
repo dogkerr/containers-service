@@ -39,12 +39,29 @@ func (s *ContainerService) Hello(ctx context.Context) (string, error) {
 	return "hello", nil
 }
 
-func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Container) (string, error) {
+func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Container) (string, time.Time, *domain.ContainerLifecycle, error) {
 	serviceId, err := s.dockerAPI.CreateService(ctx, d)
 	if err != nil {
-		hlog.Error("s.dockerAPI.CreateService", err)
-		return "", err
+		hlog.Error(err)
+		return "", time.Now(), nil, err
 	}
 
-	return serviceId, nil
+	d.ServiceID = serviceId
+	d.CreatedTime = time.Now()
+
+	ctrRowId, err := s.containerRepo.Insert(ctx, d)
+	if err != nil {
+		return "", time.Now(), nil, err
+	}
+
+	ctrLife, err := s.containerRepo.InsertLifecycle(ctx, &domain.ContainerLifecycle{
+		ID:        ctrRowId.ID,
+		StartTime: d.CreatedTime,
+		Status:    domain.ContainerStatusRUN,
+		Replica:   d.Replica,
+	})
+	if err != nil {
+		return "", time.Now(), nil, err
+	}
+	return serviceId, d.CreatedTime, ctrLife, nil
 }

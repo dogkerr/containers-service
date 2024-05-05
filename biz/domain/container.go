@@ -66,9 +66,9 @@ type Endpoint struct {
 // @Description ini resource cpus & memory buat setiap container nya
 type Resource struct {
 	// cpu dalam milicpu (1000 cpus = 1 vcpu)
-	CPUs int64 `json:"cpus" vd:"len($)<20000 && $>0"`
+	CPUs int64 `json:"cpus" vd:"(len($)<20000 && $>0) || !$`
 	// memory dalam satuan mb (1000mb = 1gb)
-	Memory int64 `json:"memory" vd:"len($)<50000  && $>0"`
+	Memory int64 `json:"memory" vd:"(len($)<50000  && $>0) || !$`
 }
 
 // type container struct {

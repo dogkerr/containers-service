@@ -24,16 +24,16 @@ func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID s
 	q := queries.New(r.db.Pool)
 	uid, err := uuid.FromString(userID)
 	if err != nil {
-		hlog.Error("uuid.FromString(userID)", err)
+		hlog.Error(err)
 		return nil, err
 	}
 	ctrs, err := q.GetAllUserContainers(ctx, googleuuid.UUID(uid))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			hlog.Debug("container milik userId: "+userID+"tidak ada", err.Error())
+			hlog.Debug("container milik userId: "+userID+"tidak ada", err)
 			return nil, domain.ErrNotFound
 		}
-		hlog.Error("q.GetAllUserContainers(ctx, googleuuid.UUID(uid))", err.Error())
+		hlog.Error(err)
 		return nil, err
 	}
 	var res []domain.Container
@@ -84,7 +84,7 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 	ctrs, err := q.GetContainer(ctx, serviceID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			hlog.Debug("container dengan id: "+serviceID+" tidak ada di database", err.Error())
+			hlog.Debug("container dengan id: "+serviceID+" tidak ada di database", err)
 			return nil, domain.ErrNotFound
 		}
 		return nil, err
@@ -135,12 +135,19 @@ func (r *ContainerRepository) Insert(ctx context.Context, c *domain.Container) (
 	q := queries.New(r.db.Pool)
 	uid, err := uuid.FromString(c.UserID)
 	if err != nil {
-		hlog.Error(" uuid.FromString(c.UserID)", err.Error())
+		hlog.Error(err)
 		return nil, err
 	}
 	ctr, err := q.InsertContainer(ctx, queries.InsertContainerParams{
-		UserID: googleuuid.UUID(uid),
-		Image:  c.Image,
+		UserID:         googleuuid.UUID(uid),
+		Image:          c.Image,
+		Status:         queries.ContainerStatusRUN,
+		Name:           c.Name,
+		ContainerPort:  int32(c.Endpoint[0].TargetPort),
+		PublicPort:     sql.NullInt32{Valid: true, Int32: int32(c.Endpoint[0].PublishedPort)},
+		TerminatedTime: sql.NullTime{Valid: false},
+		CreatedTime:    c.CreatedTime,
+		ServiceID:      c.ServiceID,
 	})
 	c.ID = ctr.ID.String()
 	return c, nil
@@ -159,7 +166,7 @@ func (r *ContainerRepository) Update(ctx context.Context, c *domain.Container) e
 		CreatedTime:    c.CreatedTime,
 	})
 	if err != nil {
-		hlog.Error("q.UpdateContainer", err.Error())
+		hlog.Error(err)
 		return err
 	}
 	return nil
@@ -169,7 +176,7 @@ func (r *ContainerRepository) Delete(ctx context.Context, serviceID string) erro
 	q := queries.New(r.db.Pool)
 	err := q.DeleteContainer(ctx, serviceID)
 	if err != nil {
-		hlog.Error("q.DeletContainer", err.Error())
+		hlog.Error(err)
 		return err
 	}
 	return nil
@@ -177,25 +184,25 @@ func (r *ContainerRepository) Delete(ctx context.Context, serviceID string) erro
 
 func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.ContainerLifecycle) (*domain.ContainerLifecycle, error) {
 	q := queries.New(r.db.Pool)
-	cID, err := uuid.FromString(c.ContainerID)
+	cID, err := uuid.FromString(c.ID)
 	if err != nil {
-		hlog.Error("uuid.FromString(c.ContainerID)", err.Error())
+		hlog.Error(err, "uuid.FromString(c.ID)", c.ID)
 		return nil, err
 	}
 	ctr, err := q.InsertContainerLifecycle(ctx, queries.InsertContainerLifecycleParams{
-		ContainerID: googleuuid.UUID(cID),
+		ContainerID: googleuuid.NullUUID{Valid: true, UUID: googleuuid.UUID(cID)},
 		StartTime:   c.StartTime,
 		Status:      queries.ContainerStatus(c.Status),
 		Replica:     int32(c.Replica),
 	})
 
 	if err != nil {
-		hlog.Error("q.InsertContainerLifecycle", err.Error())
+		hlog.Error(err)
 		return nil, err
 	}
 	res := &domain.ContainerLifecycle{
 		ID:          ctr.ID.String(),
-		ContainerID: c.ContainerID,
+		ContainerID: c.ID,
 		StartTime:   c.StartTime,
 		Replica:     c.Replica,
 		Status:      c.Status,
@@ -223,7 +230,7 @@ func (r *ContainerRepository) GetLifecycle(ctx context.Context, lifeId string) (
 	}
 	res := &domain.ContainerLifecycle{
 		ID:          life.ID.String(),
-		ContainerID: life.ContainerID.String(),
+		ContainerID: life.ContainerID.UUID.String(),
 		StartTime:   life.StartTime,
 		StopTime:    stopTime,
 		Status:      domain.ContainerStatus(life.Status),

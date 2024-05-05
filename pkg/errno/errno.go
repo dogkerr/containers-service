@@ -88,6 +88,6 @@ func ConvertErr(err error) ErrNo {
 	}
 
 	s := ServiceErr
-	s.ErrMsg = err.Error()
+	s.ErrMsg = err
 	return s
 }

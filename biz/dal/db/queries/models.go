@@ -112,7 +112,7 @@ type Container struct {
 
 type ContainerLifecycle struct {
 	ID          uuid.UUID
-	ContainerID uuid.UUID
+	ContainerID uuid.NullUUID
 	StartTime   time.Time
 	StopTime    sql.NullTime
 	Status      ContainerStatus
