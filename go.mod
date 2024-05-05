@@ -9,6 +9,7 @@ require (
 	github.com/docker/docker v26.1.1+incompatible
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/golang-jwt/jwt/v4 v4.4.1
+	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
 	github.com/hertz-contrib/jwt v1.0.2
 	github.com/hertz-contrib/logger/zap v1.1.0

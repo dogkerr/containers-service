@@ -3,13 +3,13 @@ package db
 import (
 	"context"
 	"database/sql"
+	"dogker/lintang/container-service/biz/dal/db/queries"
 	"dogker/lintang/container-service/biz/domain"
-	"fmt"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/gofrs/uuid"
-	"go.uber.org/zap"
+	googleuuid "github.com/google/uuid"
 )
 
 type ContainerRepository struct {
@@ -20,101 +20,53 @@ func NewContainerRepo(db *Postgres) *ContainerRepository {
 	return &ContainerRepository{db}
 }
 
-// query ke postgres buat dapetin semua container yang dimiliki user
-func (r *ContainerRepository) GetAllUserContainer(ctx context.Context, userID string) (*[]domain.Container, error) {
-	rows, err := r.db.Pool.QueryContext(ctx, `SELECT c.id, c.user_id, c.image_url, c.status, c.name, c.container_port, c.public_port, c.created_time,c.service_id, c.terminated_time,
-			cl.id as lifecycleId, cl.start_time as lifecycleStartTime, cl.stop_time as lifecycleStopTime, 
-			cl.replica as lifecycleReplica, cl.status FROM containers c  LEFT JOIN container_lifecycles cl ON cl.container_id=c.id
-			WHERE c.user_id=$1`, userID)
+func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID string) (*[]domain.Container, error) {
+	q := queries.New(r.db.Pool)
+	uid, err := uuid.FromString(userID)
 	if err != nil {
-		hlog.Debug(fmt.Sprintf("r.db.Pool.QueryContext  user %s", userID))
+		hlog.Error("uuid.FromString(userID)", err)
 		return nil, err
 	}
-
-	defer rows.Close()
-
+	ctrs, err := q.GetAllUserContainers(ctx, googleuuid.UUID(uid))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			hlog.Debug("container milik userId: "+userID+"tidak ada", err.Error())
+			return nil, domain.ErrNotFound
+		}
+		hlog.Error("q.GetAllUserContainers(ctx, googleuuid.UUID(uid))", err.Error())
+		return nil, err
+	}
 	var res []domain.Container
-
-	for rows.Next() {
-		var containerID uuid.UUID
-		var userID uuid.UUID
-		var imageURL string
-		var status domain.Status
-		var name string
-		var containerPort int
-		var publicPort int
-		var createdTime time.Time
-		var terminatedTimeNull sql.NullTime
-		var terminatedTime time.Time
-		var serviceIDNull sql.NullString
-		var serviceID string
-
-		var ctrStatus string
-
-		var cLifeID uuid.UUID
-
-		var lStartTimeNull sql.NullTime
-		var lStopTimeNull sql.NullTime
-
-		var lStartTime time.Time
-		var lStopTime time.Time
-		var lReplica uint64
-		var clifeStatus domain.Status
-		var clStatus string
-
-		var cLife domain.ContainerLifecycle
-
-		if err := rows.Scan(&containerID, &userID, &imageURL, &ctrStatus, &name, &containerPort, &publicPort, &createdTime, &serviceIDNull, &terminatedTimeNull,
-			&cLifeID, &lStartTimeNull, &lStopTimeNull, &lReplica, &clStatus); err != nil {
-			hlog.Error("rows.Scan", zap.Error(err), zap.String("userID", userID.String()))
-			return nil, err
-		}
-		if lStartTimeNull.Valid {
-			lStartTime = lStartTimeNull.Time
-		}
-		if lStopTimeNull.Valid {
-			lStopTime = lStopTimeNull.Time
+	for _, ctr := range ctrs {
+		cLife := domain.ContainerLifecycle{
+			ID:        ctr.Lifecycleid.UUID.String(),
+			StartTime: ctr.Lifecyclestarttime.Time,
+			StopTime:  ctr.Lifecyclestoptime.Time,
+			Replica:   uint64(ctr.Lifecyclereplica.Int32),
+			Status:    domain.ContainerStatus(ctr.Lifecyclestatus.ContainerStatus),
 		}
 
-		if serviceIDNull.Valid {
-			serviceID = serviceIDNull.String
-		}
-		if terminatedTimeNull.Valid {
-			terminatedTime = terminatedTimeNull.Time
-		}
-		if ctrStatus == "RUN" {
-			status = domain.RUN
-		} else {
-			status = domain.STOPPED
-		}
-
-		if clStatus == "RUN" {
-			clifeStatus = domain.RUN
-		} else {
-			clifeStatus = domain.STOPPED
-		}
-
-		cLife = domain.ContainerLifecycle{
-			ID:        cLifeID,
-			StartTime: lStartTime,
-			StopTime:  lStopTime,
-			Replica:   lReplica,
-			Status:    clifeStatus,
-		}
-
-		if (len(res) > 0 && res[len(res)-1].ID != containerID) || len(res) == 0 {
+		if (len(res) > 0 && res[len(res)-1].ID != ctr.ID.String()) || len(res) == 0 {
 			var newCl []domain.ContainerLifecycle
+			var terminatedtime time.Time
+			var publicPort int
+			if ctr.TerminatedTime.Valid {
+				terminatedtime = ctr.TerminatedTime.Time
+			}
+			if ctr.PublicPort.Valid {
+				publicPort = int(ctr.PublicPort.Int32)
+			}
 			res = append(res, domain.Container{
-				ID:                  containerID,
-				UserID:              userID,
-				ImageURL:            imageURL,
-				Status:              status,
-				Name:                name,
-				ContainerPort:       containerPort,
-				PublicPort:          publicPort,
-				CreatedTime:         createdTime,
-				ServiceID:           serviceID,
-				TerminatedTime:      terminatedTime,
+				ID:                  ctr.ID.String(),
+				UserID:              ctr.UserID.String(),
+				Image:               ctr.Image,
+				Status:              domain.ContainerStatus(ctr.Status),
+				Name:                ctr.Name,
+				ContainerPort:       int(ctr.ContainerPort),
+				PublicPort:          int(publicPort),
+				CreatedTime:         ctr.CreatedTime,
+				ServiceID:           ctr.ServiceID,
+				TerminatedTime:      terminatedtime,
 				ContainerLifecycles: append(newCl, cLife),
 			})
 		} else {
@@ -123,99 +75,51 @@ func (r *ContainerRepository) GetAllUserContainer(ctx context.Context, userID st
 			)
 		}
 	}
-
-	if len(res) == 0 {
-		return nil, domain.ErrNotFound
-	}
 	return &res, nil
 }
 
-// Get mendapatkan container bedasarkan idnya
 func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domain.Container, error) {
-	rows, err := r.db.Pool.QueryContext(ctx, `SELECT c.id, c.user_id, c.image_url, c.status, c.name, c.container_port, c.public_port,c.created_time,
-	c.service_id,c.terminated_time, cl.id as lifeId, cl.start_time, cl.stop_time, cl.replica , cl.status
-	FROM containers c LEFT JOIN container_lifecycles cl ON cl.container_id=c.id
-	WHERE c.service_id=$1`, serviceID)
+	q := queries.New(r.db.Pool)
 
+	ctrs, err := q.GetContainer(ctx, serviceID)
 	if err != nil {
-		hlog.Error("r.db.Pool.QueryContext ", zap.String("containerID", serviceID))
+		if err == sql.ErrNoRows {
+			hlog.Debug("container dengan id: "+serviceID+" tidak ada di database", err.Error())
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
-
-	var res domain.Container // container dg id serviceID
-
-	defer rows.Close()
-
-	for rows.Next() {
-		var containerID uuid.UUID
-		var userID uuid.UUID
-		var imageURL string
-		var status domain.Status
-		var name string
-		var containerPort int
-		var publicPort int
-		var createdTime time.Time
-		var terminatedTimeNull sql.NullTime
-		var terminatedTime time.Time
-		var serviceIDNull sql.NullString
-		var serviceID string
-
-		var ctrStatus string
-
-		var cLifeID uuid.UUID
-		var lStartTime time.Time
-		var lStopTime time.Time
-		var lReplica uint64
-		var clifeStatus domain.Status
-		var clStatus string
-
-		var cLife domain.ContainerLifecycle
-
-		if err := rows.Scan(&containerID, &userID, &imageURL, &ctrStatus, &name, &containerPort, &publicPort, &createdTime, &serviceIDNull, &terminatedTimeNull,
-			&cLifeID, &lStartTime, &lStopTime, &lReplica, &clStatus); err != nil {
-			hlog.Error("rows.Scan", zap.Error(err), zap.String("userID", userID.String()))
-			return nil, err
-		}
-
-		if serviceIDNull.Valid {
-			serviceID = serviceIDNull.String
-		}
-		if terminatedTimeNull.Valid {
-			terminatedTime = terminatedTimeNull.Time
-		}
-		if ctrStatus == "RUN" {
-			status = domain.RUN
-		} else {
-			status = domain.STOPPED
-		}
-
-		if clStatus == "RUN" {
-			clifeStatus = domain.RUN
-		} else {
-			clifeStatus = domain.STOPPED
-		}
-
-		cLife = domain.ContainerLifecycle{
-			ID:        cLifeID,
-			StartTime: lStartTime,
-			StopTime:  lStopTime,
-			Replica:   lReplica,
-			Status:    clifeStatus,
+	var res domain.Container
+	for _, ctr := range ctrs {
+		cLife := domain.ContainerLifecycle{
+			ID:        ctr.Lifeid.UUID.String(),
+			StartTime: ctr.Lifecyclestarttime.Time,
+			StopTime:  ctr.Lifecyclestoptime.Time,
+			Replica:   uint64(ctr.Lifecyclereplica.Int32),
+			Status:    domain.ContainerStatus(ctr.Lifecyclestatus.ContainerStatus),
 		}
 
 		if res.Name == "" {
 			var newCl []domain.ContainerLifecycle
+			var publicPort int
+			var terminatedtime time.Time
+			if ctr.PublicPort.Valid {
+				publicPort = int(ctr.PublicPort.Int32)
+			}
+			if ctr.TerminatedTime.Valid {
+				terminatedtime = ctr.TerminatedTime.Time
+			}
 			res = domain.Container{
-				ID:                  containerID,
-				UserID:              userID,
-				ImageURL:            imageURL,
-				Status:              status,
-				Name:                name,
-				ContainerPort:       containerPort,
+				ID:                  ctr.ID.String(),
+				UserID:              ctr.UserID.String(),
+				Image:               ctr.Image,
+				Status:              domain.ContainerStatus(ctr.Status),
+				Name:                ctr.Name,
+				ContainerPort:       int(ctr.ContainerPort),
 				PublicPort:          publicPort,
-				CreatedTime:         createdTime,
+				CreatedTime:         ctr.CreatedTime,
 				ServiceID:           serviceID,
-				TerminatedTime:      terminatedTime,
+				TerminatedTime:      terminatedtime,
 				ContainerLifecycles: append(newCl, cLife),
 			}
 		} else {
@@ -224,10 +128,124 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 			)
 		}
 	}
-	if res.Name == "" {
-		hlog.Debug("container not found", zap.String("containerID", serviceID))
-		return nil, domain.ErrNotFound
-	}
-
 	return &res, nil
+}
+
+func (r *ContainerRepository) Insert(ctx context.Context, c *domain.Container) (*domain.Container, error) {
+	q := queries.New(r.db.Pool)
+	uid, err := uuid.FromString(c.UserID)
+	if err != nil {
+		hlog.Error(" uuid.FromString(c.UserID)", err.Error())
+		return nil, err
+	}
+	ctr, err := q.InsertContainer(ctx, queries.InsertContainerParams{
+		UserID: googleuuid.UUID(uid),
+		Image:  c.Image,
+	})
+	c.ID = ctr.ID.String()
+	return c, nil
+}
+
+func (r *ContainerRepository) Update(ctx context.Context, c *domain.Container) error {
+	q := queries.New(r.db.Pool)
+	err := q.UpdateContainer(ctx, queries.UpdateContainerParams{
+		ServiceID:      c.ServiceID,
+		Image:          c.Image,
+		Status:         queries.ContainerStatus(c.Status),
+		Name:           c.Name,
+		ContainerPort:  int32(c.ContainerPort),
+		PublicPort:     sql.NullInt32{Valid: true, Int32: int32(c.PublicPort)},
+		TerminatedTime: sql.NullTime{Valid: true, Time: c.TerminatedTime},
+		CreatedTime:    c.CreatedTime,
+	})
+	if err != nil {
+		hlog.Error("q.UpdateContainer", err.Error())
+		return err
+	}
+	return nil
+}
+
+func (r *ContainerRepository) Delete(ctx context.Context, serviceID string) error {
+	q := queries.New(r.db.Pool)
+	err := q.DeleteContainer(ctx, serviceID)
+	if err != nil {
+		hlog.Error("q.DeletContainer", err.Error())
+		return err
+	}
+	return nil
+}
+
+func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.ContainerLifecycle) (*domain.ContainerLifecycle, error) {
+	q := queries.New(r.db.Pool)
+	cID, err := uuid.FromString(c.ContainerID)
+	if err != nil {
+		hlog.Error("uuid.FromString(c.ContainerID)", err.Error())
+		return nil, err
+	}
+	ctr, err := q.InsertContainerLifecycle(ctx, queries.InsertContainerLifecycleParams{
+		ContainerID: googleuuid.UUID(cID),
+		StartTime:   c.StartTime,
+		Status:      queries.ContainerStatus(c.Status),
+		Replica:     int32(c.Replica),
+	})
+
+	if err != nil {
+		hlog.Error("q.InsertContainerLifecycle", err.Error())
+		return nil, err
+	}
+	res := &domain.ContainerLifecycle{
+		ID:          ctr.ID.String(),
+		ContainerID: c.ContainerID,
+		StartTime:   c.StartTime,
+		Replica:     c.Replica,
+		Status:      c.Status,
+		StopTime:    c.StopTime,
+	}
+	return res, nil
+}
+
+func (r *ContainerRepository) GetLifecycle(ctx context.Context, lifeId string) (*domain.ContainerLifecycle, error) {
+	q := queries.New(r.db.Pool)
+	iuid, err := uuid.FromString(lifeId)
+	if err != nil {
+		return nil, err
+	}
+	life, err := q.GetContainerLifecycle(ctx, googleuuid.UUID(iuid))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	var stopTime time.Time
+	if life.StopTime.Valid {
+		stopTime = life.StopTime.Time
+	}
+	res := &domain.ContainerLifecycle{
+		ID:          life.ID.String(),
+		ContainerID: life.ContainerID.String(),
+		StartTime:   life.StartTime,
+		StopTime:    stopTime,
+		Status:      domain.ContainerStatus(life.Status),
+		Replica:     uint64(life.Replica),
+	}
+	return res, nil
+}
+
+func (r *ContainerRepository) UpdateLifecycle(ctx context.Context, lifeId string, stopTime time.Time, status domain.ContainerStatus, replica uint32) error {
+	q := queries.New(r.db.Pool)
+	lifeIduuid, err := uuid.FromString(lifeId)
+	if err != nil {
+		return err
+	}
+	err = q.UpdateContainerLifecycle(ctx, queries.UpdateContainerLifecycleParams{
+		ID:       googleuuid.UUID(lifeIduuid),
+		StopTime: sql.NullTime{Valid: true, Time: stopTime},
+		Status:   queries.ContainerStatus(status),
+		Replica:  int32(replica),
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }

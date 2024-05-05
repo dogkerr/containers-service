@@ -3,13 +3,20 @@ package service
 import (
 	"context"
 	"dogker/lintang/container-service/biz/domain"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 )
 
 type ContainerRepository interface {
 	Get(ctx context.Context, serviceID string) (*domain.Container, error)
-	GetAllUserContainer(ctx context.Context, userID string) (*[]domain.Container, error)
+	GetAllUserContainers(ctx context.Context, userID string) (*[]domain.Container, error)
+	Insert(ctx context.Context, c *domain.Container) (*domain.Container, error)
+	Update(ctx context.Context, c *domain.Container) error
+	Delete(ctx context.Context, serviceID string) error
+	InsertLifecycle(ctx context.Context, c *domain.ContainerLifecycle) (*domain.ContainerLifecycle, error)
+	GetLifecycle(ctx context.Context, lifeId string) (*domain.ContainerLifecycle, error)
+	UpdateLifecycle(ctx context.Context, lifeId string, stopTime time.Time, status domain.ContainerStatus, replica uint32) error
 }
 
 type DockerEngineAPI interface {

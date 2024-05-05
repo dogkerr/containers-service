@@ -1,0 +1,12 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "container_query.sql"
+    schema: "schema.sql"
+    gen:
+      go:
+        package: "queries"
+        out: "./../biz/dal/db/queries"
+
+
+

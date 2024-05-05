@@ -1,4 +1,4 @@
-package main
+package rpc
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 // ContainerServiceImpl implements the last service interface defined in the IDL.
 type ContainerServiceImpl struct{}
 
-func NewContainerService() ContainerServiceImpl {
-	return ContainerServiceImpl{}
+func NewContainerService() *ContainerServiceImpl {
+	return &ContainerServiceImpl{}
 }
 
 // Hello implements the ContainerServiceImpl interface.

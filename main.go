@@ -8,6 +8,7 @@ import (
 	"dogker/lintang/container-service/config"
 	"dogker/lintang/container-service/di"
 	pb "dogker/lintang/container-service/kitex_gen/container-service/pb/containerservice"
+	"dogker/lintang/container-service/rpc"
 	"net"
 	"os"
 
@@ -47,8 +48,8 @@ func main() {
 	opts = append(opts, kitexServer.WithServiceAddr(addr))
 
 	// ctrKitex := NewContainerService()
-	svr := pb.NewServer(new(ContainerServiceImpl), opts...) // kitex rpc server
-
+	// svr := pb.NewServer(new(ContainerServiceImpl), opts...) // kitex rpc server
+	svr := pb.NewServer(rpc.NewContainerService(), opts...)
 	go func() {
 		err := svr.Run()
 		if err != nil {
@@ -116,9 +117,9 @@ func getLogWriter(maxBackup, maxAge int) (writeSyncerStdout zapcore.WriteSyncer,
 }
 
 type ValidateError struct {
-	ErrType string `json:"error_type"`
-	 FailField string `json:"validateion_fail_field"`
-	 Msg string 	`json:"cause"`
+	ErrType   string `json:"error_type"`
+	FailField string `json:"validateion_fail_field"`
+	Msg       string `json:"cause"`
 }
 
 // Error implements error interface.

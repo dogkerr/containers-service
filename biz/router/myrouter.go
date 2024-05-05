@@ -43,15 +43,35 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 	}
 }
 
+// ResponseError represent the response error struct
+type ResponseError struct {
+	Message string `json:"message"`
+}
+
+// Resource
+// @Description ini resource cpus & memory buat setiap container nya
+type resource struct {
+	// cpu dalam milicpu (1000 cpus = 1 vcpu)
+	CPUs int64 `json:"cpus" vd:"len($)<20000 && $>0"`
+	// memory dalam satuan mb (1000mb = 1gb)
+	Memory int64 `json:"memory" vd:"len($)<50000  && $>0"`
+}
+
+type endpoint struct {
+	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0"`
+	PublishedPort uint64 `json:"published_port,required" vd:"$<65555 && $>0"`
+	Protocol      string `json:"protocol" default:"tcp" vd:"in($, 'tcp','udp','sctp')" `
+}
+
 type createServiceReq struct {
 	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$')"`
 	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:.-]*$')"`
 	Labels      map[string]string `json:"labels,omitempty" vd:"range($, #k < 50 && #v < 50)"`
 	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) "`
-	Limit       domain.Resource   `json:"limit,required"`
-	Reservation domain.Resource   `json:"reservation"`
+	Limit       resource          `json:"limit,required"`
+	Reservation resource          `json:"reservation"`
 	Replica     uint64            `json:"replica,required" vd:"$<1000 && $>0"`
-	Endpoint    []domain.Endpoint `json:"endpoint,required"`
+	Endpoint    []endpoint        `json:"endpoint,required"`
 }
 
 type createContainerResp struct {
@@ -67,20 +87,27 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 		c.String(consts.StatusBadRequest, err.Error())
 		return
 	}
-
+	var dEndpoint []domain.Endpoint
+	for _, endp := range req.Endpoint {
+		dEndpoint = append(dEndpoint, domain.Endpoint{
+			TargetPort:    endp.TargetPort,
+			PublishedPort: endp.PublishedPort,
+			Protocol:      endp.Protocol,
+		})
+	}
 	svcIdResp, err := m.svc.CreateNewService(ctx, &domain.Container{
 		Name:        req.Name,
 		CreatedTime: time.Now(),
 		Image:       req.Image,
 		Labels:      req.Labels,
 		Env:         req.Env,
-		Limit:       req.Limit,
-		Reservation: req.Reservation,
+		Limit:       domain.Resource(req.Limit),
+		Reservation: domain.Resource(req.Reservation),
 		Replica:     req.Replica,
-		Endpoint:    req.Endpoint,
+		Endpoint:    dEndpoint,
 	})
 	if err != nil {
-
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 	}
 
 	resp := &createContainerResp{
@@ -97,14 +124,9 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 				CPUs:   req.Limit.CPUs,
 				Memory: req.Limit.Memory,
 			},
-			Image: req.Image,
-			Env:   []string{"lalala"},
-			Endpoint: []domain.Endpoint{{
-				TargetPort:    req.Endpoint[0].TargetPort,
-				PublishedPort: req.Endpoint[0].PublishedPort,
-				Protocol:      req.Endpoint[0].Protocol,
-			},
-			},
+			Image:    req.Image,
+			Env:      []string{"lalala"},
+			Endpoint: dEndpoint,
 		},
 	}
 	c.JSON(http.StatusOK, resp)
@@ -126,4 +148,24 @@ func (m *ContainerHandler) SayHello(ctx context.Context, c *app.RequestContext) 
 	resp := new(hello.HelloResp)
 	resp.RespBody = "halo " + req.Name
 	c.JSON(http.StatusOK, resp)
+}
+
+func getStatusCode(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+
+	// logrus.Error(err)
+	switch err {
+	case domain.ErrInternalServerError:
+		return http.StatusInternalServerError
+	case domain.ErrNotFound:
+		return http.StatusNotFound
+	case domain.ErrConflict:
+		return http.StatusConflict
+	case domain.ErrBadParamInput:
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
 }

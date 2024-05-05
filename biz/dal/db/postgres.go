@@ -29,11 +29,12 @@ func NewPostgres(cfg *config.Config) *Postgres {
 
 	dsn.RawQuery = q.Encode()
 
+	// db, err := pgx.Connect(context.Background(), dsn.String())
+
 	db, err := sql.Open("pgx", dsn.String())
 	if err != nil {
 		hlog.Fatal("sql.Open", zap.Error(err))
 	}
-
 	db.SetMaxIdleConns(20)
 	db.SetMaxOpenConns(250)
 	db.SetConnMaxIdleTime(5 * time.Minute)

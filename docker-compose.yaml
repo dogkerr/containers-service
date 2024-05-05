@@ -1,0 +1,62 @@
+version: '3.9'
+services:
+
+  postgres:
+    container_name: dogker-postgres
+    image: postgres:14-alpine
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: 'admin'
+      POSTGRES_PASSWORD: 'admin'
+      POSTGRES_DB: 'dogker' # awalnya postgres
+    networks:
+      - dogker
+    ports:
+      - 5432:5432
+
+  pg-admin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@email.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_LISTEN_PORT=5050
+    networks:
+      - dogker
+    ports:
+      - 5050:5050
+
+
+
+  redis:
+    image: redis:7.0.1-alpine3.16
+    container_name: redis
+    networks:
+      - dogker
+    ports:
+      - 6379:6379
+    command: >
+      --requirepass passwordRedis
+  
+  rabbitmq:
+    image: rabbitmq:3.13.1-management
+    container_name: rabbitmq
+    networks:
+      - dogker
+    ports:
+        - 5672:5672
+        - 15672:15672
+    volumes:
+        - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+        - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+
+    
+
+volumes:
+  pg-data:
+
+networks:
+  dogker:
+    external: true
+
+

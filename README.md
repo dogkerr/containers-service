@@ -9,11 +9,7 @@
 
 Hertz:
 ```
-1. bikin idl (<nama_protobuffile>.proto)
-2. hz new -module dogker/lintang/container-service -idl idl/<nama_protobuffile>.proto
-3. go mod tidy
-4.. buat update /tambahin endpoint tinggal tambahin idl  (<nama_protobuffile>.proto)
-5. hz  -module dogker/lintang/container-service  update -idl idl/hello.proto 
+1. sama kaya gin di golang_clean_template ku , tdk perlu generate code pakai hz
 ```
 
 Kitex:
