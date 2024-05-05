@@ -22,6 +22,7 @@ import (
 type ContainerService interface {
 	Hello(context.Context) (string, error)
 	CreateNewService(ctx context.Context, d *domain.Container) (string, time.Time, *domain.ContainerLifecycle, error)
+	GetUserContainers(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
 }
 
 type ContainerHandler struct {
@@ -40,6 +41,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 		ctrH := root.Group("/containers")
 		{
 			ctrH.POST("/", append(middleware.Protected(), handler.CreateContainer)...)
+			ctrH.GET("/", append(middleware.Protected(), handler.GetUsersContainer)...)
 		}
 	}
 }
@@ -49,21 +51,15 @@ type ResponseError struct {
 	Message string `json:"message"`
 }
 
-type endpoint struct {
-	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0"`
-	PublishedPort uint64 `json:"published_port,required" vd:"$<65555 && $>0"`
-	Protocol      string `json:"protocol" default:"tcp" vd:"in($, 'tcp','udp','sctp')" `
-}
-
 type createServiceReq struct {
-	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$')"`
-	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:.-]*$')"`
-	Labels      map[string]string `json:"labels,omitempty" vd:"range($, #k < 50 && #v < 50) || !$"`
-	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$ "`
-	Limit       domain.Resource   `json:"limit,required"`
-	Reservation domain.Resource   `json:"reservation,omitempty"`
-	Replica     uint64            `json:"replica,required" vd:"$<1000 && $>0"`
-	Endpoint    []endpoint        `json:"endpoint,required"`
+	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_ dan tidak boleh ada spasi'"`
+	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:'"`
+	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
+	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
+	Limit       domain.Resource   `json:"limit,required; msg:'resource limit harus anda isi '"`
+	Reservation domain.Resource   `json:"reservation,omitempty" `
+	Replica     uint64            `json:"replica,required" vd:"$<1000 && $>0; msg:'replica harus diantara 0-1000'"`
+	Endpoint    []domain.Endpoint `json:"endpoint,required; msg:'endpoint wajib diisi'"`
 }
 
 type createContainerResp struct {
@@ -74,9 +70,14 @@ type createContainerResp struct {
 func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestContext) {
 	var req createServiceReq
 
-	err := c.BindAndValidate(&req)
+	err := c.Bind(&req)
 	if err != nil {
-		c.String(consts.StatusBadRequest, err.Error())
+		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	err = c.Validate(&req)
+	if err != nil {
+		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
 		return
 	}
 	var dEndpoint []domain.Endpoint
@@ -129,6 +130,32 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 		},
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+type Pagination struct {
+	Offset uint64 `query:"page"`
+	Limit  uint64 `query:"limit" vd:"$<100; msg:'limit tidak boleh lebih dari 100'"`
+}
+
+type getUserContainersResp struct {
+	Containers *[]domain.Container `json:"containers"`
+}
+
+func (m *ContainerHandler) GetUsersContainer(ctx context.Context, c *app.RequestContext) {
+	userId, _ := c.Get("userID")
+
+	var req Pagination
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	resp, err := m.svc.GetUserContainers(ctx, userId.(string), req.Offset, req.Limit)
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, getUserContainersResp{resp})
 }
 
 type HelloReq struct {

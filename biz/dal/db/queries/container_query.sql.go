@@ -171,6 +171,77 @@ func (q *Queries) GetContainerLifecycle(ctx context.Context, id uuid.UUID) (Cont
 	return i, err
 }
 
+const getContainerWithPagination = `-- name: GetContainerWithPagination :many
+SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_port,c.created_time,
+	c.service_id,c.terminated_time, cl.id as lifeId, cl.start_time as lifecycleStartTime, cl.stop_time as lifecycleStopTime, cl.replica  as lifecycleReplica, cl.status as lifecycleStatus 
+	FROM containers c LEFT JOIN container_lifecycles cl ON cl.container_id=c.id
+	WHERE c.service_id=$1
+	LIMIT $2 OFFSET $3
+`
+
+type GetContainerWithPaginationParams struct {
+	ServiceID string
+	Limit     int32
+	Offset    int32
+}
+
+type GetContainerWithPaginationRow struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Image              string
+	Status             ContainerStatus
+	Name               string
+	ContainerPort      int32
+	PublicPort         sql.NullInt32
+	CreatedTime        time.Time
+	ServiceID          string
+	TerminatedTime     sql.NullTime
+	Lifeid             uuid.NullUUID
+	Lifecyclestarttime sql.NullTime
+	Lifecyclestoptime  sql.NullTime
+	Lifecyclereplica   sql.NullInt32
+	Lifecyclestatus    NullContainerStatus
+}
+
+func (q *Queries) GetContainerWithPagination(ctx context.Context, arg GetContainerWithPaginationParams) ([]GetContainerWithPaginationRow, error) {
+	rows, err := q.db.QueryContext(ctx, getContainerWithPagination, arg.ServiceID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetContainerWithPaginationRow
+	for rows.Next() {
+		var i GetContainerWithPaginationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Image,
+			&i.Status,
+			&i.Name,
+			&i.ContainerPort,
+			&i.PublicPort,
+			&i.CreatedTime,
+			&i.ServiceID,
+			&i.TerminatedTime,
+			&i.Lifeid,
+			&i.Lifecyclestarttime,
+			&i.Lifecyclestoptime,
+			&i.Lifecyclereplica,
+			&i.Lifecyclestatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertContainer = `-- name: InsertContainer :one
 INSERT INTO containers (
 	user_id, image, status, name, container_port, public_port, terminated_time, created_time, service_id

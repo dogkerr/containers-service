@@ -42,7 +42,6 @@ func main() {
 	pg := dal.InitPg(cfg) // init postgres & rabbitmq
 	rmq := dal.InitRmq(cfg)
 
-	
 	// validation error custom
 	customValidationErr := CreateCustomValidationError()
 
@@ -133,13 +132,23 @@ func getLogWriter(maxBackup, maxAge int) (writeSyncerStdout zapcore.WriteSyncer,
 }
 
 type ValidateError struct {
-	ErrType   string `json:"error_type"`
-	FailField string `json:"validateion_fail_field"`
-	Msg       string `json:"cause"`
+	ErrType, FailField, Msg string
 }
 
 // Error implements error interface.
 func (e *ValidateError) Error() string {
+	if e.Msg != "" {
+		return e.ErrType + ": expr_path=" + e.FailField + ", cause=" + e.Msg
+	}
+	return e.ErrType + ": expr_path=" + e.FailField + ", cause=invalid"
+}
+
+type BindError struct {
+	ErrType, FailField, Msg string
+}
+
+// Error implements error interface.
+func (e *BindError) Error() string {
 	if e.Msg != "" {
 		return e.ErrType + ": expr_path=" + e.FailField + ", cause=" + e.Msg
 	}

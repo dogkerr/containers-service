@@ -21,6 +21,7 @@ type ContainerRepository interface {
 
 type DockerEngineAPI interface {
 	CreateService(ctx context.Context, c *domain.Container) (string, error)
+	GetAllUserContainers(ctx context.Context, userID string, cDB []domain.Container) (*[]domain.Container, error)
 }
 
 type ContainerService struct {
@@ -64,4 +65,17 @@ func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Conta
 		return "", time.Now(), nil, err
 	}
 	return serviceId, d.CreatedTime, ctrLife, nil
+}
+
+func (s *ContainerService) GetUserContainers(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error) {
+	userCtrsDb, err := s.containerRepo.GetAllUserContainers(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	ctrsDocker, err := s.dockerAPI.GetAllUserContainers(ctx, userID, *userCtrsDb)
+	if err != nil {
+		return nil, err
+	}
+	return ctrsDocker, nil
+
 }

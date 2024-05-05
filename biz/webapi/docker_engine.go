@@ -5,9 +5,11 @@ import (
 	"dogker/lintang/container-service/biz/domain"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"go.uber.org/zap"
@@ -64,11 +66,11 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 			Resources: &swarm.ResourceRequirements{
 				Limits: &swarm.Limit{
 					NanoCPUs:    c.Limit.CPUs * 1000000,
-					MemoryBytes: c.Limit.Memory / 1000000,
+					MemoryBytes: c.Limit.Memory * 1000000,
 				},
 				Reservations: &swarm.Resources{
 					NanoCPUs:    c.Reservation.CPUs * 1000000,
-					MemoryBytes: c.Reservation.Memory / 1000000,
+					MemoryBytes: c.Reservation.Memory * 1000000,
 				},
 			},
 			LogDriver: &swarm.Driver{
@@ -105,4 +107,107 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 	}
 
 	return resp.ID, nil
+}
+
+/*
+
+
+// ServiceStatus represents the number of running tasks in a service and the
+// number of tasks desired to be running.
+type ServiceStatus struct {
+	// RunningTasks is the number of tasks for the service actually in the
+	// Running state
+	RunningTasks uint64
+
+
+
+
+buat cari berapa yang masih running = replica-RunningTasks
+*/
+
+type dataServiceFromDB struct {
+	TerminatedAt time.Time
+	Lifecycles   []domain.ContainerLifecycle
+	ID           string
+}
+
+// GetAllUserContainers
+// @Description mendapatkan semua swarm service milik  user berdasarkan label user_id
+func (d *DockerEngineAPI) GetAllUserContainers(ctx context.Context, userID string, cDB []domain.Container) (*[]domain.Container, error) {
+	// var filterUserLabel map[string]string
+	filterUserLabel := filters.Arg("label", "user_id="+userID)
+	filter := filters.NewArgs(filterUserLabel)
+
+	ctrDBData := make(map[string]dataServiceFromDB) // buat nyimpen data setiap service yg cuam disimpen di db
+	for _, v := range cDB {
+		ctrDBData[v.ServiceID] = dataServiceFromDB{
+			ID:           v.ID,
+			TerminatedAt: v.TerminatedTime,
+			Lifecycles:   v.ContainerLifecycles,
+		}
+	}
+
+	resp, err := d.Cli.ServiceList(ctx, types.ServiceListOptions{
+		Filters: filter,
+	})
+	if err != nil {
+		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, "user with id %s tidak memiliki container di dogker", userID)
+	}
+	var ctrs []domain.Container
+	for _, v := range resp {
+		filterServiceLabel := filters.Arg("service", v.Spec.Name)
+		taskFilter := filters.NewArgs(filterServiceLabel)
+		tasks, err := d.Cli.TaskList(ctx, types.TaskListOptions{Filters: taskFilter})
+
+		if err != nil {
+			zap.L().Error("d.Cli.ServiceInspectWithRaw", zap.Error(err), zap.String("serviceId", v.ID))
+		}
+		var runningTasks uint64 = 0
+		for _, task := range tasks {
+			if task.DesiredState == "running" {
+				runningTasks += 1
+			}
+		}
+
+		var status domain.ContainerStatus = domain.ContainerStatusRUN
+		if runningTasks == 0 {
+			status = domain.ContainerStatusSTOPPED
+		}
+		var ctrEndpoints []domain.Endpoint
+		for _, portsConfig := range v.Endpoint.Ports {
+
+			ctrEndpoints = append(ctrEndpoints, domain.Endpoint{
+				TargetPort:    portsConfig.TargetPort,
+				PublishedPort: uint64(portsConfig.PublishedPort),
+				Protocol:      string(portsConfig.Protocol),
+			})
+		}
+		ctrs = append(ctrs, domain.Container{
+			UserID:              userID,
+			Status:              status,
+			Name:                v.Spec.Name,
+			ContainerPort:       int(v.Spec.EndpointSpec.Ports[0].TargetPort),
+			PublicPort:          int(v.Spec.EndpointSpec.Ports[0].PublishedPort),
+			CreatedTime:         v.CreatedAt,
+			TerminatedTime:      ctrDBData[v.ID].TerminatedAt,
+			ContainerLifecycles: ctrDBData[v.ID].Lifecycles,
+			ID:                  ctrDBData[v.ID].ID,
+			ServiceID:           v.ID,
+			Labels:              v.Spec.TaskTemplate.ContainerSpec.Labels,
+			Replica:             *v.Spec.Mode.Replicated.Replicas,
+			Limit: domain.Resource{
+				CPUs:   v.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1000000,
+				Memory: v.Spec.TaskTemplate.Resources.Limits.MemoryBytes / 1000000,
+			},
+			Reservation:  domain.Resource{
+				CPUs:   v.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1000000,
+				Memory: v.Spec.TaskTemplate.Resources.Reservations.MemoryBytes / 1000000,
+			},
+			Image:     v.Spec.TaskTemplate.ContainerSpec.Image,
+			Env:       v.Spec.TaskTemplate.ContainerSpec.Env,
+			Endpoint:  ctrEndpoints,
+			Available: runningTasks,
+		})
+	}
+	return &ctrs, nil
 }

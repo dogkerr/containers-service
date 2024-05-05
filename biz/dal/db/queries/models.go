@@ -130,5 +130,6 @@ type User struct {
 	ID       uuid.UUID
 	Username string
 	Email    string
+	Fullname string
 	Password string
 }

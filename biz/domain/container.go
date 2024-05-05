@@ -55,20 +55,23 @@ type Container struct {
 	Image       string            `json:"image"`
 	Env         []string          `json:"env"`
 	Endpoint    []Endpoint        `json:"endpoint"`
+
+	// from docker
+	Available uint64 `json:"replica_available,omitempty"`
 }
 type Endpoint struct {
-	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0"`
-	PublishedPort uint64 `json:"published_port,required" vd:"$<65555 && $>0"`
-	Protocol      string `json:"protocol" default:"tcp" vd:"in($, 'tcp','udp','sctp')" `
+	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0; msg:'port harus diantara range 0-65555'"`
+	PublishedPort uint64 `json:"published_port,required" vd:"$<65555 && $>0; msg:'port harus diantara range 0-65555'"`
+	Protocol      string `json:"protocol" default:"tcp" vd:"in($, 'tcp','udp','sctp'); msg:'protocol harus tcp/udp/sctp'" `
 }
 
 // Resource
 // @Description ini resource cpus & memory buat setiap container nya
 type Resource struct {
 	// cpu dalam milicpu (1000 cpus = 1 vcpu)
-	CPUs int64 `json:"cpus" vd:"(len($)<20000 && $>0) || !$`
+	CPUs int64 `json:"cpus" vd:"(len($)<20000 && $>0) || !$; msg:'cpus harus kurang dari 20000 dan lebih dari 0'"`
 	// memory dalam satuan mb (1000mb = 1gb)
-	Memory int64 `json:"memory" vd:"(len($)<50000  && $>0) || !$`
+	Memory int64 `json:"memory" vd:"(len($)<50000  && $>0) || !$; msg:'memory harus lebih dari 0 dan kruang dari 50000'"`
 }
 
 // type container struct {
