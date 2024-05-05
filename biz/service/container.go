@@ -24,6 +24,7 @@ type DockerEngineAPI interface {
 	CreateService(ctx context.Context, c *domain.Container) (string, error)
 	GetAllUserContainers(ctx context.Context, userID string, cDB []domain.Container) (*[]domain.Container, error)
 	Get(ctx context.Context, ctrID string, cDB *domain.Container) (*domain.Container, error)
+	Start(ctx context.Context, ctrID string, lastReplicaFromDB uint64, userID string) (uint64, error) 
 }
 
 type ContainerService struct {
@@ -79,24 +80,73 @@ func (s *ContainerService) GetUserContainers(ctx context.Context, userID string,
 		return nil, err
 	}
 
-	
 	return ctrsDocker, nil
 }
 
 func (s *ContainerService) GetContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error) {
 	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
 	if ctrDB.UserID != userID {
-		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf( "container %s bukan milik anda", ctrID))
+		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
 	}
 	ctrDocker, err := s.dockerAPI.Get(ctx, ctrID, ctrDB)
-	if err  != nil {
+	if err != nil {
 		return nil, err
 	}
 	return ctrDocker, nil
 }
 
+func (s *ContainerService) StartContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error) {
+	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
+	if err != nil {
+		return nil, err
+	}
+	if ctrDB.UserID != userID {
+		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+	lifecycles := ctrDB.ContainerLifecycles
+	lastReplicaFromDB := qSortWaktu(lifecycles).Replica
+	lastReplica, err := s.dockerAPI.Start(ctx, ctrID, lastReplicaFromDB, userID)
+	if err != nil {
+		zap.L().Error("Start s.dockerAPI", zap.Error(err), zap.String("ctrID", ctrID), zap.String("userID", userID))
+		return nil, err
+	}
 
+	ctrDB.Replica = lastReplica
+	return ctrDB, nil
+}
 
+func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {
+	var recurse func(left int, right int)
+	var partition func(left int, right int, pivot int) int
+
+	partition = func(left int, right int, pivot int) int {
+		v := arr[pivot]
+		right--
+		arr[pivot], arr[right] = arr[right], arr[pivot]
+
+		for i := left; i < right; i++ {
+			if arr[i].StartTime.Unix() <= v.StartTime.Unix() {
+				arr[i], arr[left] = arr[left], arr[i]
+				left++
+			}
+		}
+
+		arr[left], arr[right] = arr[right], arr[left]
+		return left
+	}
+
+	recurse = func(left int, right int) {
+		if left < right {
+			pivot := (right + left) / 2
+			pivot = partition(left, right, pivot)
+			recurse(left, pivot)
+			recurse(pivot+1, right)
+		}
+	}
+
+	recurse(0, len(arr))
+	return arr[len(arr)-1]
+}

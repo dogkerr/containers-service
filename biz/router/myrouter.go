@@ -24,6 +24,7 @@ type ContainerService interface {
 	CreateNewService(ctx context.Context, d *domain.Container) (string, time.Time, *domain.ContainerLifecycle, error)
 	GetUserContainers(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
 	GetContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error)
+	StartContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error)
 }
 
 type ContainerHandler struct {
@@ -44,6 +45,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/", append(middleware.Protected(), handler.CreateContainer)...)
 			ctrH.GET("/", append(middleware.Protected(), handler.GetUsersContainer)...)
 			ctrH.GET("/:id", append(middleware.Protected(), handler.GetContainer)...)
+			ctrH.POST("/:id/start", append(middleware.Protected(), handler.StartContainer)...)
 		}
 	}
 }
@@ -185,6 +187,23 @@ func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestConte
 	c.JSON(http.StatusOK, getContainerRes{resp})
 }
 
+func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestContext) {
+	userID, _ := c.Get("userID")
+	var req getContainerReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	resp, err := m.svc.StartContainer(ctx, req.ID, userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, getContainerRes{resp})
+}
+
 type HelloReq struct {
 	Name string `query:"name,required"`
 }
@@ -221,7 +240,7 @@ func getStatusCode(err error) int {
 		case domain.ErrBadParamInput:
 			return http.StatusBadRequest
 		default:
-			return http.StatusBadRequest
+			return http.StatusInternalServerError
 		}
 	}
 

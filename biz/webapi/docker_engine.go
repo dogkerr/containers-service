@@ -221,6 +221,7 @@ func (d *DockerEngineAPI) Get(ctx context.Context, ctrID string, cDB *domain.Con
 		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
 		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
 	}
+
 	// alg buat tau service masih running gak
 	filterServiceLabel := filters.Arg("service", resp.Spec.Name)
 	taskFilter := filters.NewArgs(filterServiceLabel)
@@ -279,5 +280,101 @@ func (d *DockerEngineAPI) Get(ctx context.Context, ctrID string, cDB *domain.Con
 	}
 
 	return ctr, nil
+
+}
+
+// GetLastReplica
+// @Description buat dapetin jumlah replica sebelum container di stop, tujuannya buat start container lagi
+// fallbacknya kalau gak ada previous replica spec utk container tsb, ya pake lastReplicaFromDB dari tabel containerlifeCycle
+func (d *DockerEngineAPI) getLastReplica(ctx context.Context, ctrID string, lastReplicaFromDB uint64) (uint64, error) {
+	resp, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
+	if err != nil {
+		// munngkin emang service dg id ctrID gak ada di docker
+		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
+		return 0, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+	}
+
+	if *resp.PreviousSpec.Mode.Replicated.Replicas != 0 {
+		// kalau sebelumnya containernya pernah running(punya replica>0)
+		return uint64(*resp.PreviousSpec.Mode.Replicated.Replicas), nil
+	}
+	if lastReplicaFromDB == 0 {
+		// kalau memang dari container nya dibuat replicanya cuma 0
+		return 1, nil
+	}
+	// kalau previous spec replica == 0  && lastReplicaFromDB != 0
+	return lastReplicaFromDB, nil
+}
+
+// Start
+// @Description misal awalnya stop(replica =0), tinggal get jumlah replica sebbelum stop , terus scale replicanya ke jumlah replica lama
+// misal kalo ternyata gak ada jumlah replica sebelum stop, query ke tabel containerlifecycle buat dapetin replica terakhir (sort by startTime descending)
+func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFromDB uint64, userID string) (uint64, error) {
+	lastReplica, err := d.getLastReplica(ctx, ctrID, lastReplicaFromDB)
+	if err != nil {
+		zap.L().Error("GetLastReplica docker engine api", zap.Error(err), zap.String("ctrID", ctrID), zap.Uint64("lastReplicaFromDB", (lastReplica)))
+		return 0, err
+	}
+	svc, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
+	if err != nil {
+		// munngkin emang service dg id ctrID gak ada di docker
+		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
+		return 0, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+	}
+
+	// yang dikomen error
+	// _, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
+
+	// 	Mode: swarm.ServiceMode{
+
+	// 		Replicated: &swarm.ReplicatedService{
+	// 			Replicas: &lastReplica,
+	// 		},
+	// 	},
+	// }, types.ServiceUpdateOptions{})
+	_, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
+		TaskTemplate: swarm.TaskSpec{
+
+			ContainerSpec: &swarm.ContainerSpec{
+				Image:  svc.Spec.TaskTemplate.ContainerSpec.Image,
+				Labels: svc.Spec.Labels,
+				Env:    svc.Spec.TaskTemplate.ContainerSpec.Env,
+			},
+			Resources: &swarm.ResourceRequirements{
+				Limits: &swarm.Limit{
+					NanoCPUs:   svc.Spec.TaskTemplate.Resources.Limits.NanoCPUs ,
+					MemoryBytes:svc.Spec.TaskTemplate.Resources.Limits.MemoryBytes ,
+				},
+				Reservations: &swarm.Resources{
+					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Reservations.NanoCPUs ,
+					MemoryBytes: svc.Spec.TaskTemplate.Resources.Reservations.MemoryBytes ,
+				},
+			},
+			LogDriver: &swarm.Driver{
+				Name: "loki",
+				Options: map[string]string{
+					"loki-url":             "http://localhost:3100/loki/api/v1/push",
+					"loki-retries":         "5",
+					"loki-batch-size":      "400",
+					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+				},
+			},
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+		},
+		Annotations: svc.Spec.Annotations,
+		Mode: swarm.ServiceMode{
+			Replicated: &swarm.ReplicatedService{
+				Replicas: &lastReplica,
+			},
+		},
+		EndpointSpec: svc.Spec.EndpointSpec,
+	}, types.ServiceUpdateOptions{})
+
+	if err != nil {
+		zap.L().Error("ServiceUpdate docker cli api", zap.Error(err))
+		return 0, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+
+	return lastReplica, nil
 
 }
