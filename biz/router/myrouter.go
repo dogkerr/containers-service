@@ -23,6 +23,7 @@ type ContainerService interface {
 	Hello(context.Context) (string, error)
 	CreateNewService(ctx context.Context, d *domain.Container) (string, time.Time, *domain.ContainerLifecycle, error)
 	GetUserContainers(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
+	GetContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error)
 }
 
 type ContainerHandler struct {
@@ -42,6 +43,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 		{
 			ctrH.POST("/", append(middleware.Protected(), handler.CreateContainer)...)
 			ctrH.GET("/", append(middleware.Protected(), handler.GetUsersContainer)...)
+			ctrH.GET("/:id", append(middleware.Protected(), handler.GetContainer)...)
 		}
 	}
 }
@@ -147,7 +149,7 @@ func (m *ContainerHandler) GetUsersContainer(ctx context.Context, c *app.Request
 	var req Pagination
 	err := c.BindAndValidate(&req)
 	if err != nil {
-		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
 		return
 	}
 	resp, err := m.svc.GetUserContainers(ctx, userId.(string), req.Offset, req.Limit)
@@ -156,6 +158,31 @@ func (m *ContainerHandler) GetUsersContainer(ctx context.Context, c *app.Request
 		return
 	}
 	c.JSON(http.StatusOK, getUserContainersResp{resp})
+}
+
+type getContainerReq struct {
+	ID string `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
+}
+
+type getContainerRes struct {
+	Container *domain.Container `json:"container"`
+}
+
+func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestContext) {
+	userId, _ := c.Get("userID")
+	var req getContainerReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	resp, err := m.svc.GetContainer(ctx, req.ID, userId.(string))
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, getContainerRes{resp})
 }
 
 type HelloReq struct {

@@ -151,7 +151,7 @@ func (d *DockerEngineAPI) GetAllUserContainers(ctx context.Context, userID strin
 		Filters: filter,
 	})
 	if err != nil {
-		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, "user with id %s tidak memiliki container di dogker", userID)
+		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("user with id %s tidak memiliki container di dogker", userID))
 	}
 	var ctrs []domain.Container
 	for _, v := range resp {
@@ -199,7 +199,7 @@ func (d *DockerEngineAPI) GetAllUserContainers(ctx context.Context, userID strin
 				CPUs:   v.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1000000,
 				Memory: v.Spec.TaskTemplate.Resources.Limits.MemoryBytes / 1000000,
 			},
-			Reservation:  domain.Resource{
+			Reservation: domain.Resource{
 				CPUs:   v.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1000000,
 				Memory: v.Spec.TaskTemplate.Resources.Reservations.MemoryBytes / 1000000,
 			},
@@ -210,4 +210,74 @@ func (d *DockerEngineAPI) GetAllUserContainers(ctx context.Context, userID strin
 		})
 	}
 	return &ctrs, nil
+}
+
+// Get
+// @Description mendapatkan container by id
+func (d *DockerEngineAPI) Get(ctx context.Context, ctrID string, cDB *domain.Container) (*domain.Container, error) {
+	resp, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
+	if err != nil {
+		// munngkin emang service dg id ctrID gak ada di docker
+		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
+		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+	}
+	// alg buat tau service masih running gak
+	filterServiceLabel := filters.Arg("service", resp.Spec.Name)
+	taskFilter := filters.NewArgs(filterServiceLabel)
+	tasks, err := d.Cli.TaskList(ctx, types.TaskListOptions{Filters: taskFilter})
+
+	if err != nil {
+		zap.L().Error("d.Cli.ServiceInspectWithRaw", zap.Error(err), zap.String("serviceId", resp.ID))
+	}
+	var runningTasks uint64 = 0
+	for _, task := range tasks {
+		if task.DesiredState == "running" {
+			runningTasks += 1
+		}
+	}
+
+	var status domain.ContainerStatus = domain.ContainerStatusRUN
+	if runningTasks == 0 {
+		status = domain.ContainerStatusSTOPPED
+	}
+
+	var ctrEndpoints []domain.Endpoint
+	for _, portsConfig := range resp.Endpoint.Ports {
+
+		ctrEndpoints = append(ctrEndpoints, domain.Endpoint{
+			TargetPort:    portsConfig.TargetPort,
+			PublishedPort: uint64(portsConfig.PublishedPort),
+			Protocol:      string(portsConfig.Protocol),
+		})
+	}
+
+	ctr := &domain.Container{
+		ID:                  cDB.ID,
+		UserID:              cDB.UserID,
+		Status:              status,
+		Name:                resp.Spec.Name,
+		ContainerPort:       int(resp.Spec.EndpointSpec.Ports[0].TargetPort),
+		PublicPort:          int(resp.Spec.EndpointSpec.Ports[0].PublishedPort),
+		CreatedTime:         resp.CreatedAt,
+		TerminatedTime:      cDB.TerminatedTime,
+		ContainerLifecycles: cDB.ContainerLifecycles,
+		ServiceID:           resp.ID,
+		Labels:              resp.Spec.TaskTemplate.ContainerSpec.Labels,
+		Replica:             *resp.Spec.Mode.Replicated.Replicas,
+		Limit: domain.Resource{
+			CPUs:   resp.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1000000,
+			Memory: resp.Spec.TaskTemplate.Resources.Limits.MemoryBytes / 1000000,
+		},
+		Reservation: domain.Resource{
+			CPUs:   resp.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1000000,
+			Memory: resp.Spec.TaskTemplate.Resources.Reservations.MemoryBytes / 1000000,
+		},
+		Image:     resp.Spec.TaskTemplate.ContainerSpec.Image,
+		Env:       resp.Spec.TaskTemplate.ContainerSpec.Env,
+		Endpoint:  ctrEndpoints,
+		Available: runningTasks,
+	}
+
+	return ctr, nil
+
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"dogker/lintang/container-service/biz/domain"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -22,6 +23,7 @@ type ContainerRepository interface {
 type DockerEngineAPI interface {
 	CreateService(ctx context.Context, c *domain.Container) (string, error)
 	GetAllUserContainers(ctx context.Context, userID string, cDB []domain.Container) (*[]domain.Container, error)
+	Get(ctx context.Context, ctrID string, cDB *domain.Container) (*domain.Container, error)
 }
 
 type ContainerService struct {
@@ -76,6 +78,25 @@ func (s *ContainerService) GetUserContainers(ctx context.Context, userID string,
 	if err != nil {
 		return nil, err
 	}
-	return ctrsDocker, nil
 
+	
+	return ctrsDocker, nil
 }
+
+func (s *ContainerService) GetContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error) {
+	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
+	if err != nil {
+		return nil, err 
+	}
+	if ctrDB.UserID != userID {
+		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf( "container %s bukan milik anda", ctrID))
+	}
+	ctrDocker, err := s.dockerAPI.Get(ctx, ctrID, ctrDB)
+	if err  != nil {
+		return nil, err
+	}
+	return ctrDocker, nil
+}
+
+
+

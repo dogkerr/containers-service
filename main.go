@@ -138,7 +138,7 @@ type ValidateError struct {
 // Error implements error interface.
 func (e *ValidateError) Error() string {
 	if e.Msg != "" {
-		return e.ErrType + ": expr_path=" + e.FailField + ", cause=" + e.Msg
+		return e.Msg
 	}
 	return e.ErrType + ": expr_path=" + e.FailField + ", cause=invalid"
 }
@@ -150,7 +150,7 @@ type BindError struct {
 // Error implements error interface.
 func (e *BindError) Error() string {
 	if e.Msg != "" {
-		return e.ErrType + ": expr_path=" + e.FailField + ", cause=" + e.Msg
+		return e.Msg
 	}
 	return e.ErrType + ": expr_path=" + e.FailField + ", cause=invalid"
 }
@@ -161,7 +161,7 @@ func CreateCustomValidationError() *binding.ValidateConfig {
 		err := ValidateError{
 			ErrType:   "validateErr",
 			FailField: "[validateFailField]: " + failField,
-			Msg:       "[validateErrMsg]: " + msg,
+			Msg:       msg,
 		}
 
 		return &err
