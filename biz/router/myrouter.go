@@ -11,6 +11,7 @@ import (
 	"dogker/lintang/container-service/biz/model/basic/hello"
 	"dogker/lintang/container-service/biz/router/middleware"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -25,6 +26,8 @@ type ContainerService interface {
 	GetUserContainers(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
 	GetContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error)
 	StartContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error)
+	StopContainer(ctx context.Context, ctrID string, userID string) error
+	DeleteContainer(ctx context.Context, ctrID string, userID string) error
 }
 
 type ContainerHandler struct {
@@ -46,6 +49,9 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.GET("/", append(middleware.Protected(), handler.GetUsersContainer)...)
 			ctrH.GET("/:id", append(middleware.Protected(), handler.GetContainer)...)
 			ctrH.POST("/:id/start", append(middleware.Protected(), handler.StartContainer)...)
+			// todo: post /:id/stop, delete /:id, put /:id, put /:id/scaleX
+			ctrH.POST("/:id/stop", append(middleware.Protected(), handler.StopContainer)...)
+			ctrH.DELETE("/:id", append(middleware.Protected(), handler.DeleteContainer)...)
 		}
 	}
 }
@@ -62,7 +68,7 @@ type createServiceReq struct {
 	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
 	Limit       domain.Resource   `json:"limit,required; msg:'resource limit harus anda isi '"`
 	Reservation domain.Resource   `json:"reservation,omitempty" `
-	Replica     uint64            `json:"replica,required" vd:"$<1000 && $>0; msg:'replica harus diantara 0-1000'"`
+	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
 	Endpoint    []domain.Endpoint `json:"endpoint,required; msg:'endpoint wajib diisi'"`
 }
 
@@ -102,7 +108,7 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 		Env:         req.Env,
 		Limit:       domain.Resource(req.Limit),
 		Reservation: domain.Resource(req.Reservation),
-		Replica:     req.Replica,
+		Replica:     uint64(req.Replica),
 		Endpoint:    dEndpoint,
 		UserID:      userId.(string),
 	})
@@ -202,6 +208,43 @@ func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestCon
 		return
 	}
 	c.JSON(http.StatusOK, getContainerRes{resp})
+}
+
+type deleteRes struct {
+	Message string `json:"message"`
+}
+
+func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestContext) {
+	userID, _ := c.Get("userID")
+	var req getContainerReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	err = m.svc.StopContainer(ctx, req.ID, userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully stopped", req.ID)})
+}
+
+func (m *ContainerHandler) DeleteContainer(ctx context.Context, c *app.RequestContext) {
+	userID, _ := c.Get("userID")
+	var req getContainerReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	err = m.svc.DeleteContainer(ctx, req.ID, userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully deleted", req.ID)})
+
 }
 
 type HelloReq struct {

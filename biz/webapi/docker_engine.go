@@ -293,11 +293,13 @@ func (d *DockerEngineAPI) getLastReplica(ctx context.Context, ctrID string, last
 		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
 		return 0, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
 	}
-
-	if *resp.PreviousSpec.Mode.Replicated.Replicas != 0 {
-		// kalau sebelumnya containernya pernah running(punya replica>0)
-		return uint64(*resp.PreviousSpec.Mode.Replicated.Replicas), nil
+	if resp.PreviousSpec != nil {
+		if *resp.PreviousSpec.Mode.Replicated.Replicas != 0 {
+			// kalau sebelumnya containernya pernah running(punya replica>0)
+			return uint64(*resp.PreviousSpec.Mode.Replicated.Replicas), nil
+		}
 	}
+
 	if lastReplicaFromDB == 0 {
 		// kalau memang dari container nya dibuat replicanya cuma 0
 		return 1, nil
@@ -309,29 +311,19 @@ func (d *DockerEngineAPI) getLastReplica(ctx context.Context, ctrID string, last
 // Start
 // @Description misal awalnya stop(replica =0), tinggal get jumlah replica sebbelum stop , terus scale replicanya ke jumlah replica lama
 // misal kalo ternyata gak ada jumlah replica sebelum stop, query ke tabel containerlifecycle buat dapetin replica terakhir (sort by startTime descending)
-func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFromDB uint64, userID string) (uint64, error) {
+func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFromDB uint64, userID string, cDB *domain.Container) (*domain.Container, error) {
 	lastReplica, err := d.getLastReplica(ctx, ctrID, lastReplicaFromDB)
 	if err != nil {
 		zap.L().Error("GetLastReplica docker engine api", zap.Error(err), zap.String("ctrID", ctrID), zap.Uint64("lastReplicaFromDB", (lastReplica)))
-		return 0, err
+		return nil, err
 	}
 	svc, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
 	if err != nil {
 		// munngkin emang service dg id ctrID gak ada di docker
 		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
-		return 0, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
 	}
 
-	// yang dikomen error
-	// _, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
-
-	// 	Mode: swarm.ServiceMode{
-
-	// 		Replicated: &swarm.ReplicatedService{
-	// 			Replicas: &lastReplica,
-	// 		},
-	// 	},
-	// }, types.ServiceUpdateOptions{})
 	_, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
 		TaskTemplate: swarm.TaskSpec{
 
@@ -342,12 +334,12 @@ func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFr
 			},
 			Resources: &swarm.ResourceRequirements{
 				Limits: &swarm.Limit{
-					NanoCPUs:   svc.Spec.TaskTemplate.Resources.Limits.NanoCPUs ,
-					MemoryBytes:svc.Spec.TaskTemplate.Resources.Limits.MemoryBytes ,
+					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Limits.NanoCPUs,
+					MemoryBytes: svc.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
 				},
 				Reservations: &swarm.Resources{
-					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Reservations.NanoCPUs ,
-					MemoryBytes: svc.Spec.TaskTemplate.Resources.Reservations.MemoryBytes ,
+					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Reservations.NanoCPUs,
+					MemoryBytes: svc.Spec.TaskTemplate.Resources.Reservations.MemoryBytes,
 				},
 			},
 			LogDriver: &swarm.Driver{
@@ -372,9 +364,142 @@ func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFr
 
 	if err != nil {
 		zap.L().Error("ServiceUpdate docker cli api", zap.Error(err))
-		return 0, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 
-	return lastReplica, nil
+	// convert to domain.Container
 
+	// alg buat tau service masih running gak
+	filterServiceLabel := filters.Arg("service", svc.Spec.Name)
+	taskFilter := filters.NewArgs(filterServiceLabel)
+	tasks, err := d.Cli.TaskList(ctx, types.TaskListOptions{Filters: taskFilter})
+
+	if err != nil {
+		zap.L().Error("d.Cli.ServiceInspectWithRaw", zap.Error(err), zap.String("serviceId", svc.ID))
+	}
+	var runningTasks uint64 = 0
+	for _, task := range tasks {
+		if task.DesiredState == "running" {
+			runningTasks += 1
+		}
+	}
+
+	var status domain.ContainerStatus = domain.ContainerStatusRUN
+	if runningTasks == 0 {
+		status = domain.ContainerStatusSTOPPED
+	}
+
+	var ctrEndpoints []domain.Endpoint
+	for _, portsConfig := range svc.Endpoint.Ports {
+
+		ctrEndpoints = append(ctrEndpoints, domain.Endpoint{
+			TargetPort:    portsConfig.TargetPort,
+			PublishedPort: uint64(portsConfig.PublishedPort),
+			Protocol:      string(portsConfig.Protocol),
+		})
+	}
+
+	ctr := &domain.Container{
+		ID:                  cDB.ID,
+		UserID:              cDB.UserID,
+		Status:              status,
+		Name:                svc.Spec.Name,
+		ContainerPort:       int(svc.Spec.EndpointSpec.Ports[0].TargetPort),
+		PublicPort:          int(svc.Spec.EndpointSpec.Ports[0].PublishedPort),
+		CreatedTime:         svc.CreatedAt,
+		TerminatedTime:      cDB.TerminatedTime,
+		ContainerLifecycles: cDB.ContainerLifecycles,
+		ServiceID:           svc.ID,
+		Labels:              svc.Spec.TaskTemplate.ContainerSpec.Labels,
+		Replica:             lastReplica,
+		Limit: domain.Resource{
+			CPUs:   svc.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1000000,
+			Memory: svc.Spec.TaskTemplate.Resources.Limits.MemoryBytes / 1000000,
+		},
+		Reservation: domain.Resource{
+			CPUs:   svc.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1000000,
+			Memory: svc.Spec.TaskTemplate.Resources.Reservations.MemoryBytes / 1000000,
+		},
+		Image:     svc.Spec.TaskTemplate.ContainerSpec.Image,
+		Env:       svc.Spec.TaskTemplate.ContainerSpec.Env,
+		Endpoint:  ctrEndpoints,
+		Available: lastReplica,
+	}
+
+	return ctr, nil
+
+}
+
+// Stop
+// @Description stop container by id
+// @Returns err
+func (d *DockerEngineAPI) Stop(ctx context.Context, ctrID string, userID string, cDB *domain.Container) error {
+
+	svc, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
+	if err != nil {
+		// munngkin emang service dg id ctrID gak ada di docker
+		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+	}
+
+	var newReplica uint64 = 0
+	_, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
+		TaskTemplate: swarm.TaskSpec{
+
+			ContainerSpec: &swarm.ContainerSpec{
+				Image:  svc.Spec.TaskTemplate.ContainerSpec.Image,
+				Labels: svc.Spec.Labels,
+				Env:    svc.Spec.TaskTemplate.ContainerSpec.Env,
+			},
+			Resources: &swarm.ResourceRequirements{
+				Limits: &swarm.Limit{
+					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Limits.NanoCPUs,
+					MemoryBytes: svc.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
+				},
+				Reservations: &swarm.Resources{
+					NanoCPUs:    svc.Spec.TaskTemplate.Resources.Reservations.NanoCPUs,
+					MemoryBytes: svc.Spec.TaskTemplate.Resources.Reservations.MemoryBytes,
+				},
+			},
+			LogDriver: &swarm.Driver{
+				Name: "loki",
+				Options: map[string]string{
+					"loki-url":             "http://localhost:3100/loki/api/v1/push",
+					"loki-retries":         "5",
+					"loki-batch-size":      "400",
+					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+				},
+			},
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+		},
+		Annotations: svc.Spec.Annotations,
+		Mode: swarm.ServiceMode{
+			Replicated: &swarm.ReplicatedService{
+				Replicas: &newReplica,
+			},
+		},
+		EndpointSpec: svc.Spec.EndpointSpec,
+	}, types.ServiceUpdateOptions{})
+
+	if err != nil {
+		zap.L().Error("ServiceUpdate docker cli api", zap.Error(err))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+
+	return nil
+}
+
+func (d *DockerEngineAPI) Delete(ctx context.Context, ctrID string) error {
+	// cek apakah service masih ada
+	_, _, err := d.Cli.ServiceInspectWithRaw(ctx, ctrID, types.ServiceInspectOptions{})
+	if err != nil {
+		// munngkin emang service dg id ctrID gak ada di docker
+		zap.L().Debug("ServiceInspectWithRaw docker cli ", zap.Error(err), zap.String("ctrID", ctrID))
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container dengan id %s tidak terdaftar dalam sistem dogker", ctrID))
+	}
+	err = d.Cli.ServiceRemove(ctx, ctrID)
+	if err != nil {
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+	return nil
 }

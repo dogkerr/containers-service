@@ -24,7 +24,9 @@ type DockerEngineAPI interface {
 	CreateService(ctx context.Context, c *domain.Container) (string, error)
 	GetAllUserContainers(ctx context.Context, userID string, cDB []domain.Container) (*[]domain.Container, error)
 	Get(ctx context.Context, ctrID string, cDB *domain.Container) (*domain.Container, error)
-	Start(ctx context.Context, ctrID string, lastReplicaFromDB uint64, userID string) (uint64, error) 
+	Start(ctx context.Context, ctrID string, lastReplicaFromDB uint64, userID string, cDB *domain.Container) (*domain.Container, error)
+	Stop(ctx context.Context, ctrID string, userID string, cDB *domain.Container) error
+	Delete(ctx context.Context, ctrID string) error
 }
 
 type ContainerService struct {
@@ -59,10 +61,10 @@ func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Conta
 	}
 
 	ctrLife, err := s.containerRepo.InsertLifecycle(ctx, &domain.ContainerLifecycle{
-		ID:        ctrRowId.ID,
-		StartTime: d.CreatedTime,
-		Status:    domain.ContainerStatusRUN,
-		Replica:   d.Replica,
+		ContainerID: ctrRowId.ID,
+		StartTime:   d.CreatedTime,
+		Status:      domain.ContainerStatusRUN,
+		Replica:     d.Replica,
 	})
 	if err != nil {
 		return "", time.Now(), nil, err
@@ -70,6 +72,8 @@ func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Conta
 	return serviceId, d.CreatedTime, ctrLife, nil
 }
 
+// GetUserContainers -.
+// @Description get semua container milik user , tapi ini yg masih run sebagai swarm service doang jadi masih salah
 func (s *ContainerService) GetUserContainers(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error) {
 	userCtrsDb, err := s.containerRepo.GetAllUserContainers(ctx, userID)
 	if err != nil {
@@ -83,6 +87,8 @@ func (s *ContainerService) GetUserContainers(ctx context.Context, userID string,
 	return ctrsDocker, nil
 }
 
+// GetContainer -.
+// @Description get container by id, tapi ini yg masih run sebagai swarm service doang jadi masih salah
 func (s *ContainerService) GetContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error) {
 	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
 	if err != nil {
@@ -99,6 +105,7 @@ func (s *ContainerService) GetContainer(ctx context.Context, ctrID string, userI
 }
 
 func (s *ContainerService) StartContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error) {
+	// get ctr dari db
 	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
 	if err != nil {
 		return nil, err
@@ -106,16 +113,87 @@ func (s *ContainerService) StartContainer(ctx context.Context, ctrID string, use
 	if ctrDB.UserID != userID {
 		return nil, domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
 	}
+
+	// get lastReplica dari tabel ctrlifecycles
 	lifecycles := ctrDB.ContainerLifecycles
 	lastReplicaFromDB := qSortWaktu(lifecycles).Replica
-	lastReplica, err := s.dockerAPI.Start(ctx, ctrID, lastReplicaFromDB, userID)
+
+	// start container
+	ctr, err := s.dockerAPI.Start(ctx, ctrID, lastReplicaFromDB, userID, ctrDB)
 	if err != nil {
 		zap.L().Error("Start s.dockerAPI", zap.Error(err), zap.String("ctrID", ctrID), zap.String("userID", userID))
 		return nil, err
 	}
 
-	ctrDB.Replica = lastReplica
-	return ctrDB, nil
+	// save to tabel ctrlifecycles
+	newLife, err := s.containerRepo.InsertLifecycle(ctx, &domain.ContainerLifecycle{
+		ContainerID: ctrDB.ID,
+		StartTime:   time.Now(),
+		Replica:     ctr.Replica,
+		Status:      domain.ContainerStatusRUN,
+	})
+	if err != nil {
+		return nil, err
+	}
+	ctr.ContainerLifecycles = append(ctr.ContainerLifecycles, *newLife)
+
+	return ctr, nil
+}
+
+func (s *ContainerService) StopContainer(ctx context.Context, ctrID string, userID string) error {
+	// get ctr dari db
+	// cek apakah user yg punya containernya
+	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
+	if err != nil {
+		return err
+	}
+	if ctrDB.UserID != userID {
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+
+	// stop container
+	err = s.dockerAPI.Stop(ctx, ctrID, userID, ctrDB)
+	if err != nil {
+		return err
+	}
+
+	// get lastLifecycleID dari tabel ctrlifecycles
+	lifecycles := ctrDB.ContainerLifecycles
+	lastLifecycleID := qSortWaktu(lifecycles).ID
+
+	// update current lifecycles
+	err = s.containerRepo.UpdateLifecycle(ctx, lastLifecycleID, time.Now(), domain.ContainerStatusSTOPPED, uint32(ctrDB.Replica))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *ContainerService) DeleteContainer(ctx context.Context, ctrID string, userID string) error {
+	// get ctr dari db
+	// cek apakah user yg punya containernya
+	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
+	if err != nil {
+		return err
+	}
+	if ctrDB.UserID != userID {
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+
+	// delete container
+	err = s.dockerAPI.Delete(ctx, ctrID)
+	if err != nil {
+		return err
+	}
+
+	// update terminatedTime di tabel containers
+	ctrDB.TerminatedTime = time.Now()
+	err = s.containerRepo.Update(ctx, ctrDB)
+	if err != nil {
+		return err 
+	}
+	return nil
+
 }
 
 func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {

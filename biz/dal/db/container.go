@@ -93,11 +93,12 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 	var res domain.Container
 	for _, ctr := range ctrs {
 		cLife := domain.ContainerLifecycle{
-			ID:        ctr.Lifeid.UUID.String(),
-			StartTime: ctr.Lifecyclestarttime.Time,
-			StopTime:  ctr.Lifecyclestoptime.Time,
-			Replica:   uint64(ctr.Lifecyclereplica.Int32),
-			Status:    domain.ContainerStatus(ctr.Lifecyclestatus.ContainerStatus),
+			ID:          ctr.Lifeid.UUID.String(),
+			ContainerID: ctr.ID.String(),
+			StartTime:   ctr.Lifecyclestarttime.Time,
+			StopTime:    ctr.Lifecyclestoptime.Time,
+			Replica:     uint64(ctr.Lifecyclereplica.Int32),
+			Status:      domain.ContainerStatus(ctr.Lifecyclestatus.ContainerStatus),
 		}
 
 		if res.Name == "" {
@@ -185,9 +186,9 @@ func (r *ContainerRepository) Delete(ctx context.Context, serviceID string) erro
 
 func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.ContainerLifecycle) (*domain.ContainerLifecycle, error) {
 	q := queries.New(r.db.Pool)
-	cID, err := uuid.FromString(c.ID)
+	cID, err := uuid.FromString(c.ContainerID)
 	if err != nil {
-		zap.L().Error("uuid.FromString(c.ID)", zap.Error(err), zap.String("cid", c.ID))
+		zap.L().Error("uuid.FromString(c.ContainerID)", zap.Error(err), zap.String("cid", c.ContainerID))
 		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	ctr, err := q.InsertContainerLifecycle(ctx, queries.InsertContainerLifecycleParams{
@@ -203,7 +204,7 @@ func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.Con
 	}
 	res := &domain.ContainerLifecycle{
 		ID:          ctr.ID.String(),
-		ContainerID: c.ID,
+		ContainerID: c.ContainerID,
 		StartTime:   c.StartTime,
 		Replica:     c.Replica,
 		Status:      c.Status,
