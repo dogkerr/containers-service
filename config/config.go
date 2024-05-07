@@ -69,7 +69,8 @@ type (
 	}
 	Dkron struct {
 		DkronURL string `json:"dkron_url" env:"DKRON_URL"`
-	}
+		MyServiceURL string `json:"ctr_svc_url" env:"CTR_URL"`
+}
 )
 
 // NewConfig returns app config.

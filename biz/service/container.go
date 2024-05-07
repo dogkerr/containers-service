@@ -33,7 +33,9 @@ type DockerEngineAPI interface {
 }
 
 type DkronAPI interface {
-	AddJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string) error}
+	AddJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string) error
+	AddCreateJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string, ctr *domain.Container) error
+}
 
 type ContainerService struct {
 	containerRepo ContainerRepository
@@ -294,10 +296,32 @@ func (s *ContainerService) Schedule(ctx context.Context, userID string, ctrID st
 	// create cron job di dkron
 	err = s.dkronAPI.AddJob(ctx, scheduledTimeSecond, ctrID, action, userID)
 	if err != nil {
-		return err 
+		return err
 	}
 
-	return nil 
+	return nil
+}
+
+func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error {
+	// convert scheduledTime to second format
+	var scheduledTimeSecond uint64
+
+	if timeFormat == domain.Day {
+		scheduledTimeSecond = 86400 * scheduledTime
+	} else if timeFormat == domain.Hour {
+		scheduledTimeSecond = 3600 * scheduledTime
+	} else if timeFormat == domain.Second {
+		scheduledTimeSecond = scheduledTime
+	} else if timeFormat == domain.Month {
+		// 86400 * 30 = detik adalam 1 bulan
+		scheduledTimeSecond = 86400 * 30 * scheduledTime
+	}
+	err := s.dkronAPI.AddCreateJob(ctx, scheduledTimeSecond, ctrID, action, userID, ctr)
+	if err != nil {
+		zap.L().Error("AddCreateJob dkron", zap.String("ctrID", ctr.ID),  zap.String("userID", userID))
+		return  err 
+	}
+	return nil
 }
 
 func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {

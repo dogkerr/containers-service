@@ -31,6 +31,7 @@ type ContainerService interface {
 	UpdateContainer(ctx context.Context, d *domain.Container, ctrID string, userID string) (string, error)
 	ScaleX(ctx context.Context, userID string, ctrID string, replica uint64) error
 	Schedule(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction) error
+	ScheduleCreate(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error
 }
 
 type ContainerHandler struct {
@@ -62,6 +63,8 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/:id/schedule", append(middleware.Protected(), handler.ScheduleContainer)...)
 			ctrH.POST("/scheduler/:id/stop", handler.ScheduledStop)
 			ctrH.POST("/scheduler/:id/start", handler.ScheduledStart)
+			ctrH.POST("/scheduler/:id/create", handler.ScheduleCreate)
+			ctrH.POST("/scheduler/:id/terminate", handler.ScheduleTerminate)
 			// ctrH.POST("/scheduler/:id/create", handler. ))
 		}
 	}
@@ -372,9 +375,74 @@ func (m *ContainerHandler) ScheduledStart(ctx context.Context, c *app.RequestCon
 	c.JSON(http.StatusOK, "container started")
 }
 
+type scheduleCreateServiceReq struct {
+	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -/_ dan tidak boleh ada spasi'"`
+	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:'"`
+	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
+	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
+	Limit       domain.Resource   `json:"limit,required" vd:" msg:'resource limit harus anda isi '" `
+	Reservation domain.Resource   `json:"reservation,omitempty" `
+	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
+	Endpoint    []domain.Endpoint `json:"endpoint,required" vd:"msg:'endpoint wajib diisi'"`
+	UserID      string            `json:"user_id" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'user_id harus alphanumeric dan simbol -/_'"`
+}
+
+func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestContext) {
+	var req scheduleCreateServiceReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	var dEndpoint []domain.Endpoint
+	for _, endp := range req.Endpoint {
+		dEndpoint = append(dEndpoint, domain.Endpoint{
+			TargetPort:    endp.TargetPort,
+			PublishedPort: endp.PublishedPort,
+			Protocol:      endp.Protocol,
+		})
+	}
+
+	_, _, _, err = m.svc.CreateNewService(ctx, &domain.Container{
+		Name:        req.Name,
+		CreatedTime: time.Now(),
+		Image:       req.Image,
+		Labels:      req.Labels,
+		Env:         req.Env,
+		Limit:       domain.Resource(req.Limit),
+		Reservation: domain.Resource(req.Reservation),
+		Replica:     uint64(req.Replica),
+		Endpoint:    dEndpoint,
+		UserID:      req.UserID,
+	})
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, "ok")
+}
+
+func (m *ContainerHandler) ScheduleTerminate(ctx context.Context, c *app.RequestContext) {
+	var req scheduledActionReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	err = m.svc.DeleteContainer(ctx, req.ID, req.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, "ok")
+}
+
 type scheduleContainerReq struct {
 	ID            string                 `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
-	Action        domain.ContainerAction `json:"action" vd:"in($, 'CREATE', 'START', 'STOPPED', 'TERMINATE'); msg:'action harus dari pilihan berikut=CREATE, START, STOPPED, TERMINATE '"`
+	Action        domain.ContainerAction `json:"action" vd:"in($ , 'START', 'STOP', 'TERMINATE'); msg:'action harus dari pilihan berikut=START, STOPPED, TERMINATE '"`
 	ScheduledTIme uint64                 `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"`
 	TimeFormat    domain.TimeFormat      `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"`
 }
@@ -388,10 +456,53 @@ func (m *ContainerHandler) ScheduleContainer(ctx context.Context, c *app.Request
 		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
 		return
 	}
-
-	// timeFormat := domain.GetTimeFormat[req.TimeFormat]
-	// action := domain.GetContainerAction[req.Action]
 	err = m.svc.Schedule(ctx, userID.(string), req.ID, req.ScheduledTIme, req.TimeFormat, req.Action)
+
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s for container %s scheduled in %d %s", req.Action, req.ID, req.ScheduledTIme, req.TimeFormat)})
+}
+
+type scheduleCreateReq struct {
+	ID            string                   `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
+	Action        domain.ContainerAction   `json:"action" vd:"$=='CREATE'; msg:'action harus dari pilihan berikut=CREATE'"`
+	ScheduledTIme uint64                   `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"`
+	TimeFormat    domain.TimeFormat        `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"`
+	ContainerReq  scheduleCreateServiceReq `json:"container" vd:" msg:'container wajib anda isi'"`
+}
+
+func (m *ContainerHandler) CreateScheduledCreate(ctx context.Context, c *app.RequestContext) {
+	userID, _ := c.Get("userID")
+
+	var req scheduleCreateReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	var dEndpoint []domain.Endpoint
+	for _, endp := range req.ContainerReq.Endpoint {
+		dEndpoint = append(dEndpoint, domain.Endpoint{
+			TargetPort:    endp.TargetPort,
+			PublishedPort: endp.PublishedPort,
+			Protocol:      endp.Protocol,
+		})
+	}
+
+	err = m.svc.ScheduleCreate(ctx, userID.(string), req.ID, req.ScheduledTIme, req.TimeFormat, req.Action, &domain.Container{
+		Name:        req.ContainerReq.Name,
+		CreatedTime: time.Now(),
+		Image:       req.ContainerReq.Image,
+		Labels:      req.ContainerReq.Labels,
+		Env:         req.ContainerReq.Env,
+		Limit:       domain.Resource(req.ContainerReq.Limit),
+		Reservation: domain.Resource(req.ContainerReq.Reservation),
+		Replica:     uint64(req.ContainerReq.Replica),
+		Endpoint:    dEndpoint,
+		UserID:      req.ContainerReq.UserID,
+	})
 	if err != nil {
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return

@@ -16,12 +16,14 @@ import (
 )
 
 type DkronAPI struct {
-	BaseURL string
+	BaseURL      string
+	MyServiceURL string
 }
 
 func CreateDkronAPI(cfg *config.Config) *DkronAPI {
 	return &DkronAPI{
-		BaseURL: cfg.Dkron.DkronURL,
+		BaseURL:      cfg.Dkron.DkronURL,
+		MyServiceURL: cfg.MyServiceURL,
 	}
 }
 
@@ -38,8 +40,7 @@ type JobReq struct {
 	ExecutorConfig map[string]string `json:"executor_config"`
 }
 
-
-func (d *DkronAPI) InstallCURL(ctx context.Context) error  {
+func (d *DkronAPI) InstallCURL(ctx context.Context) error {
 	at := time.Now().Add(time.Duration(2) * time.Second)
 
 	payload, err := json.Marshal(JobReq{
@@ -57,21 +58,21 @@ func (d *DkronAPI) InstallCURL(ctx context.Context) error  {
 		},
 	})
 	if err != nil {
-		zap.L().Error("Marshal JSON", zap.Error(err), )
+		zap.L().Error("Marshal JSON", zap.Error(err))
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 
 	req, err := http.NewRequest("POST", d.BaseURL, bytes.NewBuffer(payload))
 
 	if err != nil {
-		zap.L().Error("NewRequest ", zap.Error(err), )
+		zap.L().Error("NewRequest ", zap.Error(err))
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		zap.L().Error("client.Do(req) ", zap.Error(err), )
+		zap.L().Error("client.Do(req) ", zap.Error(err))
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	defer resp.Body.Close()
@@ -85,14 +86,12 @@ func (d *DkronAPI) AddJob(ctx context.Context, schedule uint64, ctrID string, ac
 	randomString := uuid.New().String()
 	var cronURL string
 
-	if action == domain.CreateContainer {
-		cronURL = fmt.Sprintf("http://container-service:8888/api/v1/containers/scheduler/%s/create", ctrID)
-	} else if action == domain.StartContainer {
-		cronURL = fmt.Sprintf("http://container-service:8888/api/v1/containers/scheduler/%s/start", ctrID)
+	if action == domain.StartContainer {
+		cronURL = fmt.Sprintf("http://%s:8888/api/v1/containers/scheduler/%s/start", d.MyServiceURL, ctrID)
 	} else if action == domain.StopContainer {
-		cronURL = fmt.Sprintf("http://container-service:8888/api/v1/containers/scheduler/%s/stop", ctrID)
+		cronURL = fmt.Sprintf("http://%s:8888/api/v1/containers/scheduler/%s/stop", d.MyServiceURL, ctrID)
 	} else if action == domain.TerminateContainer {
-		cronURL = fmt.Sprintf("http://container-service:8888/api/v1/containers/scheduler/%s/terminate", ctrID)
+		cronURL = fmt.Sprintf("http://%s:8888/api/v1/containers/scheduler/%s/terminate", d.MyServiceURL, ctrID)
 	}
 
 	jobName := ctrID + randomString
@@ -117,6 +116,131 @@ func (d *DkronAPI) AddJob(ctx context.Context, schedule uint64, ctrID string, ac
 				"user_id": "` + userID + `"
 			}'`,
 		},
+	})
+	if err != nil {
+		zap.L().Error("Marshal JSON", zap.Error(err), zap.String("ctrID", ctrID))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+
+	req, err := http.NewRequest("POST", d.BaseURL, bytes.NewBuffer(payload))
+
+	if err != nil {
+		zap.L().Error("NewRequest ", zap.Error(err), zap.String("ctrID", ctrID))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		zap.L().Error("client.Do(req) ", zap.Error(err), zap.String("ctrID", ctrID))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
+func (d *DkronAPI) AddCreateJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string, ctr *domain.Container) error {
+	randomString := uuid.New().String()
+	var cronURL string
+
+	cronURL = fmt.Sprintf("http://%s:8888/api/v1/containers/scheduler/%s/create", d.MyServiceURL, ctrID)
+
+	jobName := ctrID + randomString
+
+	var commandString map[string]string
+
+	var reserv, labels, envs string = "", "", ""
+
+	if ctr.Reservation.CPUs != 0 {
+		reserv = `"reservation": {
+			"cpus": "` + string(ctr.Reservation.CPUs) + `",
+			"memory": "` + string(ctr.Reservation.Memory) + `"	
+		},`
+	}
+	if ctr.Labels != nil {
+		var labelsItems string = `"tes": "tes"`
+		for k, v := range ctr.Labels {
+			labelsItems += `, "` + k + `": "` + v + `"`
+		}
+		labels = `"labels": {
+			` + labelsItems + `
+		},
+		`
+	}
+	if ctr.Env != nil {
+		var envItems string = "TES=TES"
+		for _, v := range ctr.Env {
+			envItems += `
+				,` + v + `
+			`
+		}
+
+		envs = `"env": [
+			"` + envItems + `"
+		],`
+	}
+
+	var endpoints string
+	var endpointItems string = ""
+
+	for i, v := range ctr.Endpoint {
+		endpointItems += `{
+		 "target_port": "` + string(v.TargetPort) + `",
+		 "published_port": "` + string(v.PublishedPort) + `",
+		 "protocol": "` + v.Protocol + `"
+		},`
+		if i == len(ctr.Endpoint)-1 && len(ctr.Endpoint) != 1 {
+			endpointItems += `{
+				"target_port": "` + string(v.TargetPort) + `",
+				"published_port": "` + string(v.PublishedPort) + `",
+				"protocol": "` + v.Protocol + `"
+			   }`
+		}
+		if len(ctr.Endpoint) == 1 {
+			endpointItems += `{
+				"target_port": "` + string(v.TargetPort) + `",
+				"published_port": "` + string(v.PublishedPort) + `",
+				"protocol": "` + v.Protocol + `"
+			   }`
+		}
+
+	}
+	endpoints = `
+		[
+		` + endpointItems + `
+		]
+	`
+
+	commandString = map[string]string{
+		"command": `curl --location  ` + cronURL + `  \
+		--header 'Content-Type: application/json' \
+		--data '{
+			"name": "` + ctr.Name + `",
+			"image": "` + ctr.Image + `",
+			"limit": {
+				"cpus": "` + string(ctr.Limit.CPUs) + `",
+				"memory": "` + string(ctr.Limit.Memory) + `"
+			},
+			` + reserv + `
+			"replica": 1,
+			` + labels + `
+			` + envs + `
+			"endpoint": ` + endpoints + `
+		}'`}
+
+	at := time.Now().Add(time.Duration(schedule) * time.Second)
+	payload, err := json.Marshal(JobReq{
+		Name:           jobName,
+		DisplayName:    jobName,
+		Schedule:       fmt.Sprintf("@at " + at.Format(time.RFC3339)),
+		Timezone:       "Asia/Jakarta",
+		Owner:          "lintang birda saputra",
+		OwnerEmail:     "lintangbirdasaputra23@gmail.com",
+		Disabled:       false,
+		Concurrency:    "allow",
+		Executor:       "shell",
+		ExecutorConfig: commandString,
 	})
 	if err != nil {
 		zap.L().Error("Marshal JSON", zap.Error(err), zap.String("ctrID", ctrID))
