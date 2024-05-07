@@ -192,7 +192,7 @@ type JobReq struct {
 }
 
 func InstallCURLInDkron() error {
-	at := time.Now().Add(time.Duration(2) * time.Second)
+	at := time.Now().Add(2 * time.Second)
 
 	payload, err := json.Marshal(JobReq{
 		Name:        "insatll curl",
@@ -227,5 +227,6 @@ func InstallCURLInDkron() error {
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	defer resp.Body.Close()
+	zap.L().Info("Successfully installl curl in dkron")
 	return nil
 }

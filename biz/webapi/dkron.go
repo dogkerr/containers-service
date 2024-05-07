@@ -140,13 +140,13 @@ func (d *DkronAPI) AddJob(ctx context.Context, schedule uint64, ctrID string, ac
 	return nil
 }
 
-func (d *DkronAPI) AddCreateJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string, ctr *domain.Container) error {
+func (d *DkronAPI) AddCreateJob(ctx context.Context, schedule uint64, action domain.ContainerAction, userID string, ctr *domain.Container) error {
 	randomString := uuid.New().String()
 	var cronURL string
 
-	cronURL = fmt.Sprintf("http://%s:8888/api/v1/containers/scheduler/%s/create", d.MyServiceURL, ctrID)
+	cronURL = fmt.Sprintf("http://%s:8888/api/v1/containers/scheduler/create", d.MyServiceURL)
 
-	jobName := ctrID + randomString
+	jobName := userID + randomString
 
 	var commandString map[string]string
 
@@ -154,8 +154,8 @@ func (d *DkronAPI) AddCreateJob(ctx context.Context, schedule uint64, ctrID stri
 
 	if ctr.Reservation.CPUs != 0 {
 		reserv = `"reservation": {
-			"cpus": "` + string(ctr.Reservation.CPUs) + `",
-			"memory": "` + string(ctr.Reservation.Memory) + `"	
+			"cpus": ` + fmt.Sprint(ctr.Reservation.CPUs) + `,
+			"memory": ` + fmt.Sprint(ctr.Reservation.Memory) + `
 		},`
 	}
 	if ctr.Labels != nil {
@@ -185,22 +185,24 @@ func (d *DkronAPI) AddCreateJob(ctx context.Context, schedule uint64, ctrID stri
 	var endpointItems string = ""
 
 	for i, v := range ctr.Endpoint {
-		endpointItems += `{
-		 "target_port": "` + string(v.TargetPort) + `",
-		 "published_port": "` + string(v.PublishedPort) + `",
-		 "protocol": "` + v.Protocol + `"
-		},`
-		if i == len(ctr.Endpoint)-1 && len(ctr.Endpoint) != 1 {
+		if len(ctr.Endpoint) == 1 && endpointItems == "" {
 			endpointItems += `{
-				"target_port": "` + string(v.TargetPort) + `",
-				"published_port": "` + string(v.PublishedPort) + `",
+				"target_port": ` + fmt.Sprint(v.TargetPort) + `,
+				"published_port": ` + fmt.Sprint(v.PublishedPort) + `,
 				"protocol": "` + v.Protocol + `"
 			   }`
-		}
-		if len(ctr.Endpoint) == 1 {
+		} else {
 			endpointItems += `{
-				"target_port": "` + string(v.TargetPort) + `",
-				"published_port": "` + string(v.PublishedPort) + `",
+				"target_port": ` + fmt.Sprint(v.TargetPort) + `,
+				"published_port": ` + fmt.Sprint(v.PublishedPort) + `,
+				"protocol": "` + v.Protocol + `"
+			   },`
+		}
+
+		if i == len(ctr.Endpoint)-1 && len(ctr.Endpoint) != 1 {
+			endpointItems += `{
+				"target_port": ` + fmt.Sprint(v.TargetPort) + `,
+				"published_port": ` + fmt.Sprint(v.PublishedPort) + `,
 				"protocol": "` + v.Protocol + `"
 			   }`
 		}
@@ -219,14 +221,15 @@ func (d *DkronAPI) AddCreateJob(ctx context.Context, schedule uint64, ctrID stri
 			"name": "` + ctr.Name + `",
 			"image": "` + ctr.Image + `",
 			"limit": {
-				"cpus": "` + string(ctr.Limit.CPUs) + `",
-				"memory": "` + string(ctr.Limit.Memory) + `"
+				"cpus": ` + fmt.Sprint(ctr.Limit.CPUs) + `,
+				"memory": ` + fmt.Sprint(ctr.Limit.Memory) + `
 			},
 			` + reserv + `
-			"replica": 1,
+			"replica": ` + fmt.Sprint(ctr.Replica) + `,
 			` + labels + `
 			` + envs + `
-			"endpoint": ` + endpoints + `
+			"endpoint": ` + endpoints + `,
+			"user_id": "`+ userID +`"
 		}'`}
 
 	at := time.Now().Add(time.Duration(schedule) * time.Second)
@@ -243,21 +246,21 @@ func (d *DkronAPI) AddCreateJob(ctx context.Context, schedule uint64, ctrID stri
 		ExecutorConfig: commandString,
 	})
 	if err != nil {
-		zap.L().Error("Marshal JSON", zap.Error(err), zap.String("ctrID", ctrID))
+		zap.L().Error("Marshal JSON", zap.Error(err))
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 
 	req, err := http.NewRequest("POST", d.BaseURL, bytes.NewBuffer(payload))
 
 	if err != nil {
-		zap.L().Error("NewRequest ", zap.Error(err), zap.String("ctrID", ctrID))
+		zap.L().Error("NewRequest ", zap.Error(err))
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		zap.L().Error("client.Do(req) ", zap.Error(err), zap.String("ctrID", ctrID))
+		zap.L().Error("client.Do(req) ", zap.Error(err))
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	defer resp.Body.Close()

@@ -34,7 +34,7 @@ type DockerEngineAPI interface {
 
 type DkronAPI interface {
 	AddJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string) error
-	AddCreateJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string, ctr *domain.Container) error
+	AddCreateJob(ctx context.Context, schedule uint64, action domain.ContainerAction, userID string, ctr *domain.Container) error
 }
 
 type ContainerService struct {
@@ -302,7 +302,7 @@ func (s *ContainerService) Schedule(ctx context.Context, userID string, ctrID st
 	return nil
 }
 
-func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error {
+func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error {
 	// convert scheduledTime to second format
 	var scheduledTimeSecond uint64
 
@@ -316,7 +316,7 @@ func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, ct
 		// 86400 * 30 = detik adalam 1 bulan
 		scheduledTimeSecond = 86400 * 30 * scheduledTime
 	}
-	err := s.dkronAPI.AddCreateJob(ctx, scheduledTimeSecond, ctrID, action, userID, ctr)
+	err := s.dkronAPI.AddCreateJob(ctx, scheduledTimeSecond, action, userID, ctr)
 	if err != nil {
 		zap.L().Error("AddCreateJob dkron", zap.String("ctrID", ctr.ID),  zap.String("userID", userID))
 		return  err 

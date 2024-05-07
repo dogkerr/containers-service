@@ -18,6 +18,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+	"go.uber.org/zap"
 )
 
 type ContainerService interface {
@@ -31,7 +32,7 @@ type ContainerService interface {
 	UpdateContainer(ctx context.Context, d *domain.Container, ctrID string, userID string) (string, error)
 	ScaleX(ctx context.Context, userID string, ctrID string, replica uint64) error
 	Schedule(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction) error
-	ScheduleCreate(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error
+	ScheduleCreate(ctx context.Context, userID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error
 }
 
 type ContainerHandler struct {
@@ -61,9 +62,10 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 
 			// scheduling related
 			ctrH.POST("/:id/schedule", append(middleware.Protected(), handler.ScheduleContainer)...)
+			ctrH.POST("/create/schedule", append(middleware.Protected(), handler.CreateScheduledCreate)...)
 			ctrH.POST("/scheduler/:id/stop", handler.ScheduledStop)
 			ctrH.POST("/scheduler/:id/start", handler.ScheduledStart)
-			ctrH.POST("/scheduler/:id/create", handler.ScheduleCreate)
+			ctrH.POST("/scheduler/create", handler.ScheduleCreate)
 			ctrH.POST("/scheduler/:id/terminate", handler.ScheduleTerminate)
 			// ctrH.POST("/scheduler/:id/create", handler. ))
 		}
@@ -391,6 +393,8 @@ func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestCon
 	var req scheduleCreateServiceReq
 	err := c.BindAndValidate(&req)
 	if err != nil {
+		zap.L().Error("BindAndValidate", zap.Error(err), zap.String("err", err.Error()))
+
 		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
 		return
 	}
@@ -417,6 +421,8 @@ func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestCon
 		UserID:      req.UserID,
 	})
 	if err != nil {
+		zap.L().Error("CreateNewService", zap.Error(err), zap.String("err", err.Error()))
+
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
@@ -466,7 +472,6 @@ func (m *ContainerHandler) ScheduleContainer(ctx context.Context, c *app.Request
 }
 
 type scheduleCreateReq struct {
-	ID            string                   `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
 	Action        domain.ContainerAction   `json:"action" vd:"$=='CREATE'; msg:'action harus dari pilihan berikut=CREATE'"`
 	ScheduledTIme uint64                   `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"`
 	TimeFormat    domain.TimeFormat        `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"`
@@ -491,7 +496,7 @@ func (m *ContainerHandler) CreateScheduledCreate(ctx context.Context, c *app.Req
 		})
 	}
 
-	err = m.svc.ScheduleCreate(ctx, userID.(string), req.ID, req.ScheduledTIme, req.TimeFormat, req.Action, &domain.Container{
+	err = m.svc.ScheduleCreate(ctx, userID.(string), req.ScheduledTIme, req.TimeFormat, req.Action, &domain.Container{
 		Name:        req.ContainerReq.Name,
 		CreatedTime: time.Now(),
 		Image:       req.ContainerReq.Image,
@@ -507,7 +512,7 @@ func (m *ContainerHandler) CreateScheduledCreate(ctx context.Context, c *app.Req
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s for container %s scheduled in %d %s", req.Action, req.ID, req.ScheduledTIme, req.TimeFormat)})
+	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s scheduled in %d %s", req.Action, req.ScheduledTIme, req.TimeFormat)})
 }
 
 func (m *ContainerHandler) SayHello(ctx context.Context, c *app.RequestContext) {
