@@ -27,17 +27,6 @@ services:
       - 5050:5050
 
 
-
-  redis:
-    image: redis:7.0.1-alpine3.16
-    container_name: redis
-    networks:
-      - dogker
-    ports:
-      - 6379:6379
-    command: >
-      --requirepass passwordRedis
-  
   rabbitmq:
     image: rabbitmq:3.13.1-management
     container_name: rabbitmq
@@ -50,7 +39,7 @@ services:
         - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
         - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
 
-  
+
   container-service:
     container_name: container-service
     build:
@@ -66,6 +55,17 @@ services:
       - 8888:8888
     env_file:
       - .env 
+
+# 
+  dkron:
+    image: dkron/dkron:3.2.7
+    container_name: dkron
+    networks:
+      - dogker
+    ports:
+      - 9911:8080
+    command: agent --server --bootstrap-expect=1 z--node-name=node1
+
 
 volumes:
   pg-data:

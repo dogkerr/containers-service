@@ -17,7 +17,7 @@ type ContainerStatus string
 
 const (
 	ContainerStatusRUN     ContainerStatus = "RUN"
-	ContainerStatusSTOPPED ContainerStatus = "STOPPED"
+	ContainerStatusSTOPPED ContainerStatus = "STOP"
 )
 
 func (e *ContainerStatus) Scan(src interface{}) error {

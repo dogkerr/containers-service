@@ -21,6 +21,7 @@ type (
 		RabbitMQ
 
 		Docker
+		Dkron
 	}
 
 	// App -.
@@ -65,6 +66,9 @@ type (
 
 	Docker struct {
 		DockerHost string `json:"docker_host" env:"DOCKER_HOST"`
+	}
+	Dkron struct {
+		DkronURL string `json:"dkron_url" env:"DKRON_URL"`
 	}
 )
 

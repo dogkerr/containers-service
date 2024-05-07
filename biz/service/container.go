@@ -30,18 +30,22 @@ type DockerEngineAPI interface {
 	Delete(ctx context.Context, ctrID string) error
 	Update(ctx context.Context, ctrID string, c *domain.Container, userID string) (err error)
 	ScaleX(ctx context.Context, ctrID string, replica uint64, userID string) error
-	
 }
+
+type DkronAPI interface {
+	AddJob(ctx context.Context, schedule uint64, ctrID string, action domain.ContainerAction, userID string) error}
 
 type ContainerService struct {
 	containerRepo ContainerRepository
 	dockerAPI     DockerEngineAPI
+	dkronAPI      DkronAPI
 }
 
-func NewContainerService(c ContainerRepository, d DockerEngineAPI) *ContainerService {
+func NewContainerService(c ContainerRepository, d DockerEngineAPI, dkron DkronAPI) *ContainerService {
 	return &ContainerService{
 		containerRepo: c,
 		dockerAPI:     d,
+		dkronAPI:      dkron,
 	}
 }
 
@@ -237,19 +241,19 @@ func (s *ContainerService) ScaleX(ctx context.Context, userID string, ctrID stri
 	// sekalian cek apakah container dg ctrID ada
 	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
 	if err != nil {
-		return  err
+		return err
 	}
 	if ctrDB.UserID != userID {
-		return  domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
 	}
 
 	// horizontal scaling swarm service
 	err = s.dockerAPI.ScaleX(ctx, ctrID, replica, userID)
 	if err != nil {
-		return err 
+		return err
 	}
 
-	// update field replica di tabel lifecycle 
+	// update field replica di tabel lifecycle
 	// get last lifecycleID , berdasaarkan starttime terbaru
 	lifecycles := ctrDB.ContainerLifecycles
 	lifeCycleID := qSortWaktu(lifecycles).ID
@@ -258,6 +262,42 @@ func (s *ContainerService) ScaleX(ctx context.Context, userID string, ctrID stri
 		return err
 	}
 	return nil
+}
+
+func (s *ContainerService) Schedule(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction) error {
+	// get ctr dari db
+	// cek apakah user yg punya containernya
+	// sekalian cek apakah container dg ctrID ada
+	ctrDB, err := s.containerRepo.Get(ctx, ctrID)
+	if err != nil {
+		return err
+	}
+	if ctrDB.UserID != userID {
+		zap.L().Debug("user bukan pemilik container")
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+
+	// convert scheduledTime to second format
+	var scheduledTimeSecond uint64
+
+	if timeFormat == domain.Day {
+		scheduledTimeSecond = 86400 * scheduledTime
+	} else if timeFormat == domain.Hour {
+		scheduledTimeSecond = 3600 * scheduledTime
+	} else if timeFormat == domain.Second {
+		scheduledTimeSecond = scheduledTime
+	} else if timeFormat == domain.Month {
+		// 86400 * 30 = detik adalam 1 bulan
+		scheduledTimeSecond = 86400 * 30 * scheduledTime
+	}
+
+	// create cron job di dkron
+	err = s.dkronAPI.AddJob(ctx, scheduledTimeSecond, ctrID, action, userID)
+	if err != nil {
+		return err 
+	}
+
+	return nil 
 }
 
 func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {

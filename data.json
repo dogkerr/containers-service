@@ -1,0 +1,27 @@
+{
+
+    "name": "job_stop_container",
+    "displayname": "string",
+    "schedule": "@every 5s",
+    "timezone": "Asia/Jakarta",
+    "owner": "Lintang Birda Saputra",
+    "owner_email": "lintangbirdasaputra23@gmail.com",
+    "disabled": false,
+    "metadata": 
+    {
+        "nama": "stop_container"
+
+    },
+    "concurrency": "allow",
+    "executor": "http",
+    "executor_config": {
+        "method": "POST",
+        "url": "http://container-service:8888/api/v1/containers/scheduler/qnun8zweug8tjrjwtbu40mb3o/stop",
+        "timeout": "30",
+        "expectCode": "200",
+        "expectBody": "ok",
+        "debug": "true"
+    }
+
+
+}

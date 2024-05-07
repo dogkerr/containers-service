@@ -21,10 +21,11 @@ import (
 func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config) *service.ContainerService {
 	containerRepository := db.NewContainerRepo(pg)
 	dockerEngineAPI := webapi.CreateNewDockerEngineAPI(cfg)
-	containerService := service.NewContainerService(containerRepository, dockerEngineAPI)
+	dkronAPI := webapi.CreateDkronAPI(cfg)
+	containerService := service.NewContainerService(containerRepository, dockerEngineAPI, dkronAPI)
 	return containerService
 }
 
 // wire.go:
 
-var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)))
+var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, webapi.CreateDkronAPI, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)), wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)))

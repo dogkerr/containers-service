@@ -82,7 +82,7 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 					"loki-url":             "http://localhost:3100/loki/api/v1/push",
 					"loki-retries":         "5",
 					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + c.UserID,
+					"loki-external-labels": "job=docker,container_name=" + c.Name + ",userId=" + c.UserID,
 				},
 			},
 		},
@@ -106,7 +106,7 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 		}
 		// hlog.Error(" d.Cli.ServiceCreate", err)
 		zap.L().Error(" d.Cli.ServiceCreate", zap.Error(err))
-		return "", domain.WrapErrorf(err, domain.ErrInternalServerError, " internal server error")
+		return "", domain.WrapErrorf(err, domain.ErrBadParamInput, err.Error())
 	}
 
 	return resp.ID, nil
@@ -351,7 +351,7 @@ func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFr
 					"loki-url":             "http://localhost:3100/loki/api/v1/push",
 					"loki-retries":         "5",
 					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+					"loki-external-labels": "job=docker,container_name=" + cDB.Name + ",userId=" + userID,
 				},
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
@@ -470,7 +470,7 @@ func (d *DockerEngineAPI) Stop(ctx context.Context, ctrID string, userID string,
 					"loki-url":             "http://localhost:3100/loki/api/v1/push",
 					"loki-retries":         "5",
 					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+					"loki-external-labels": "job=docker,container_name=" + cDB.Name + ",userId=" + userID,
 				},
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
@@ -551,7 +551,7 @@ func (d *DockerEngineAPI) Update(ctx context.Context, ctrID string, c *domain.Co
 					"loki-url":             "http://localhost:3100/loki/api/v1/push",
 					"loki-retries":         "5",
 					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+					"loki-external-labels": "job=docker,container_name=" + c.Name + ",userId=" + userID,
 				},
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
@@ -616,7 +616,7 @@ func (d *DockerEngineAPI) ScaleX(ctx context.Context, ctrID string, replica uint
 					"loki-url":             "http://localhost:3100/loki/api/v1/push",
 					"loki-retries":         "5",
 					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=go_container_log1,userId=" + userID,
+					"loki-external-labels": "job=docker,container_name=" + svc.Spec.Name + ",userId=" + userID,
 				},
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},

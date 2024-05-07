@@ -19,7 +19,7 @@ type ContainerStatus string
 
 const (
 	ContainerStatusRUN     ContainerStatus = "RUN"
-	ContainerStatusSTOPPED ContainerStatus = "STOPPED"
+	ContainerStatusSTOPPED ContainerStatus = "STOP"
 )
 
 type ContainerLifecycle struct {
@@ -78,3 +78,21 @@ type Resource struct {
 // 	Name        string            `json:"name"`
 
 // }
+
+// buat cron job
+
+type ContainerAction string
+
+const (
+	CreateContainer    ContainerAction = "CREATE"
+	StartContainer     ContainerAction = "START"
+	StopContainer      ContainerAction = "STOP"
+	TerminateContainer ContainerAction = "TERMINATE"
+)
+
+var GetContainerAction = map[string]ContainerAction{ //create a map to link enumeration values with string representation
+	"CREATE":  CreateContainer,
+	"START":    StartContainer,
+	"STOP":   StopContainer,
+	"TERMINATE": TerminateContainer,
+}

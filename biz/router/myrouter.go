@@ -30,6 +30,7 @@ type ContainerService interface {
 	DeleteContainer(ctx context.Context, ctrID string, userID string) error
 	UpdateContainer(ctx context.Context, d *domain.Container, ctrID string, userID string) (string, error)
 	ScaleX(ctx context.Context, userID string, ctrID string, replica uint64) error
+	Schedule(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction) error
 }
 
 type ContainerHandler struct {
@@ -55,7 +56,13 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/:id/stop", append(middleware.Protected(), handler.StopContainer)...)
 			ctrH.DELETE("/:id", append(middleware.Protected(), handler.DeleteContainer)...)
 			ctrH.PUT("/:id", append(middleware.Protected(), handler.UpdateContainer)...)
-			ctrH.PUT("/:id/scale", append(middleware.Protected(),handler.ScaleX)...)
+			ctrH.PUT("/:id/scale", append(middleware.Protected(), handler.ScaleX)...)
+
+			// scheduling related
+			ctrH.POST("/:id/schedule", append(middleware.Protected(), handler.ScheduleContainer)...)
+			ctrH.POST("/scheduler/:id/stop", handler.ScheduledStop)
+			ctrH.POST("/scheduler/:id/start", handler.ScheduledStart)
+			// ctrH.POST("/scheduler/:id/create", handler. ))
 		}
 	}
 }
@@ -324,6 +331,72 @@ func (m *ContainerHandler) ScaleX(ctx context.Context, c *app.RequestContext) {
 
 type HelloReq struct {
 	Name string `query:"name,required"`
+}
+
+type scheduledActionReq struct {
+	ID     string `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
+	UserID string `json:"user_id"`
+}
+
+// ScheduledStop -.
+// @Description yg di hit dkron buat stop container (scheduled job)
+func (m *ContainerHandler) ScheduledStop(ctx context.Context, c *app.RequestContext) {
+	var req scheduledActionReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	err = m.svc.StopContainer(ctx, req.ID, req.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, "ok")
+}
+
+func (m *ContainerHandler) ScheduledStart(ctx context.Context, c *app.RequestContext) {
+	var req scheduledActionReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	_, err = m.svc.StartContainer(ctx, req.ID, req.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, "container started")
+}
+
+type scheduleContainerReq struct {
+	ID            string                 `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
+	Action        domain.ContainerAction `json:"action" vd:"in($, 'CREATE', 'START', 'STOPPED', 'TERMINATE'); msg:'action harus dari pilihan berikut=CREATE, START, STOPPED, TERMINATE '"`
+	ScheduledTIme uint64                 `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"`
+	TimeFormat    domain.TimeFormat      `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"`
+}
+
+func (m *ContainerHandler) ScheduleContainer(ctx context.Context, c *app.RequestContext) {
+	userID, _ := c.Get("userID")
+
+	var req scheduleContainerReq
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	// timeFormat := domain.GetTimeFormat[req.TimeFormat]
+	// action := domain.GetContainerAction[req.Action]
+	err = m.svc.Schedule(ctx, userID.(string), req.ID, req.ScheduledTIme, req.TimeFormat, req.Action)
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s for container %s scheduled in %d %s", req.Action, req.ID, req.ScheduledTIme, req.TimeFormat)})
 }
 
 func (m *ContainerHandler) SayHello(ctx context.Context, c *app.RequestContext) {
