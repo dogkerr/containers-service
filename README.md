@@ -55,7 +55,9 @@ func main() {
 #### cara run
 lokal
 ```
-
+di config/config.go
+ uncomment line ini: // err = cleanenv.ReadConfig(path+"/local.env", cfg) // local run 
+comment line ini: err = cleanenv.ReadConfig(path+".env", cfg)
 sh build.sh
  sh output/bootstrap.sh
  ```
