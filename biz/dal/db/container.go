@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/gofrs/uuid"
 	googleuuid "github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"
 )
 
@@ -65,7 +66,7 @@ func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID s
 				Name:                ctr.Name,
 				ContainerPort:       int(ctr.ContainerPort),
 				PublicPort:          int(publicPort),
-				CreatedTime:         ctr.CreatedTime,
+				CreatedTime:         ctr.CreatedTime.Time,
 				ServiceID:           ctr.ServiceID,
 				TerminatedTime:      terminatedtime,
 				ContainerLifecycles: append(newCl, cLife),
@@ -122,7 +123,7 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 				Name:                ctr.Name,
 				ContainerPort:       int(ctr.ContainerPort),
 				PublicPort:          publicPort,
-				CreatedTime:         ctr.CreatedTime,
+				CreatedTime:         ctr.CreatedTime.Time,
 				ServiceID:           serviceID,
 				TerminatedTime:      terminatedtime,
 				ContainerLifecycles: append(newCl, cLife),
@@ -150,9 +151,9 @@ func (r *ContainerRepository) Insert(ctx context.Context, c *domain.Container) (
 		Status:         queries.ContainerStatusRUN,
 		Name:           c.Name,
 		ContainerPort:  int32(c.Endpoint[0].TargetPort),
-		PublicPort:     sql.NullInt32{Valid: true, Int32: int32(c.Endpoint[0].PublishedPort)},
-		TerminatedTime: sql.NullTime{Valid: false},
-		CreatedTime:    c.CreatedTime,
+		PublicPort:     pgtype.Int4{Valid: true, Int32: int32(c.Endpoint[0].PublishedPort)},
+		TerminatedTime: pgtype.Timestamptz{Valid: false},
+		CreatedTime:    pgtype.Timestamptz{Valid: true, Time: c.CreatedTime},
 		ServiceID:      c.ServiceID,
 	})
 	c.ID = ctr.ID.String()
@@ -167,9 +168,9 @@ func (r *ContainerRepository) Update(ctx context.Context, c *domain.Container) e
 		Status:         queries.ContainerStatus(c.Status),
 		Name:           c.Name,
 		ContainerPort:  int32(c.ContainerPort),
-		PublicPort:     sql.NullInt32{Valid: true, Int32: int32(c.PublicPort)},
-		TerminatedTime: sql.NullTime{Valid: true, Time: c.TerminatedTime},
-		CreatedTime:    c.CreatedTime,
+		PublicPort:     pgtype.Int4{Valid: true, Int32: int32(c.PublicPort)},
+		TerminatedTime: pgtype.Timestamptz{Valid: true, Time: c.TerminatedTime},
+		CreatedTime:    pgtype.Timestamptz{Time: c.CreatedTime, Valid: true},
 	})
 	if err != nil {
 		zap.L().Error(" q.UpdateContainer", zap.Error(err))
@@ -197,7 +198,7 @@ func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.Con
 	}
 	ctr, err := q.InsertContainerLifecycle(ctx, queries.InsertContainerLifecycleParams{
 		ContainerID: googleuuid.NullUUID{Valid: true, UUID: googleuuid.UUID(cID)},
-		StartTime:   c.StartTime,
+		StartTime:   pgtype.Timestamptz{Time: c.StartTime, Valid: true},
 		Status:      queries.ContainerStatus(c.Status),
 		Replica:     int32(c.Replica),
 	})
@@ -237,7 +238,7 @@ func (r *ContainerRepository) GetLifecycle(ctx context.Context, lifeId string) (
 	res := &domain.ContainerLifecycle{
 		ID:          life.ID.String(),
 		ContainerID: life.ContainerID.UUID.String(),
-		StartTime:   life.StartTime,
+		StartTime:   life.StartTime.Time,
 		StopTime:    stopTime,
 		Status:      domain.ContainerStatus(life.Status),
 		Replica:     uint64(life.Replica),
@@ -254,7 +255,7 @@ func (r *ContainerRepository) UpdateLifecycle(ctx context.Context, lifeId string
 	}
 	err = q.UpdateContainerLifecycle(ctx, queries.UpdateContainerLifecycleParams{
 		ID:       googleuuid.UUID(lifeIduuid),
-		StopTime: sql.NullTime{Valid: true, Time: stopTime},
+		StopTime: pgtype.Timestamptz{Valid: true, Time: stopTime},
 		Status:   queries.ContainerStatus(status),
 		Replica:  int32(replica),
 	})

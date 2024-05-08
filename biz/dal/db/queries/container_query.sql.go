@@ -7,10 +7,9 @@ package queries
 
 import (
 	"context"
-	"database/sql"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const deleteContainer = `-- name: DeleteContainer :exec
@@ -19,7 +18,7 @@ WHERE service_id=$1
 `
 
 func (q *Queries) DeleteContainer(ctx context.Context, serviceID string) error {
-	_, err := q.db.ExecContext(ctx, deleteContainer, serviceID)
+	_, err := q.db.Exec(ctx, deleteContainer, serviceID)
 	return err
 }
 
@@ -37,19 +36,19 @@ type GetAllUserContainersRow struct {
 	Status             ContainerStatus
 	Name               string
 	ContainerPort      int32
-	PublicPort         sql.NullInt32
-	CreatedTime        time.Time
+	PublicPort         pgtype.Int4
+	CreatedTime        pgtype.Timestamptz
 	ServiceID          string
-	TerminatedTime     sql.NullTime
+	TerminatedTime     pgtype.Timestamptz
 	Lifecycleid        uuid.NullUUID
-	Lifecyclestarttime sql.NullTime
-	Lifecyclestoptime  sql.NullTime
-	Lifecyclereplica   sql.NullInt32
+	Lifecyclestarttime pgtype.Timestamptz
+	Lifecyclestoptime  pgtype.Timestamptz
+	Lifecyclereplica   pgtype.Int4
 	Lifecyclestatus    NullContainerStatus
 }
 
 func (q *Queries) GetAllUserContainers(ctx context.Context, userID uuid.UUID) ([]GetAllUserContainersRow, error) {
-	rows, err := q.db.QueryContext(ctx, getAllUserContainers, userID)
+	rows, err := q.db.Query(ctx, getAllUserContainers, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,9 +77,6 @@ func (q *Queries) GetAllUserContainers(ctx context.Context, userID uuid.UUID) ([
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -101,19 +97,19 @@ type GetContainerRow struct {
 	Status             ContainerStatus
 	Name               string
 	ContainerPort      int32
-	PublicPort         sql.NullInt32
-	CreatedTime        time.Time
+	PublicPort         pgtype.Int4
+	CreatedTime        pgtype.Timestamptz
 	ServiceID          string
-	TerminatedTime     sql.NullTime
+	TerminatedTime     pgtype.Timestamptz
 	Lifeid             uuid.NullUUID
-	Lifecyclestarttime sql.NullTime
-	Lifecyclestoptime  sql.NullTime
-	Lifecyclereplica   sql.NullInt32
+	Lifecyclestarttime pgtype.Timestamptz
+	Lifecyclestoptime  pgtype.Timestamptz
+	Lifecyclereplica   pgtype.Int4
 	Lifecyclestatus    NullContainerStatus
 }
 
 func (q *Queries) GetContainer(ctx context.Context, serviceID string) ([]GetContainerRow, error) {
-	rows, err := q.db.QueryContext(ctx, getContainer, serviceID)
+	rows, err := q.db.Query(ctx, getContainer, serviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -142,9 +138,6 @@ func (q *Queries) GetContainer(ctx context.Context, serviceID string) ([]GetCont
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -158,7 +151,7 @@ WHERE id=$1
 `
 
 func (q *Queries) GetContainerLifecycle(ctx context.Context, id uuid.UUID) (ContainerLifecycle, error) {
-	row := q.db.QueryRowContext(ctx, getContainerLifecycle, id)
+	row := q.db.QueryRow(ctx, getContainerLifecycle, id)
 	var i ContainerLifecycle
 	err := row.Scan(
 		&i.ID,
@@ -192,19 +185,19 @@ type GetContainerWithPaginationRow struct {
 	Status             ContainerStatus
 	Name               string
 	ContainerPort      int32
-	PublicPort         sql.NullInt32
-	CreatedTime        time.Time
+	PublicPort         pgtype.Int4
+	CreatedTime        pgtype.Timestamptz
 	ServiceID          string
-	TerminatedTime     sql.NullTime
+	TerminatedTime     pgtype.Timestamptz
 	Lifeid             uuid.NullUUID
-	Lifecyclestarttime sql.NullTime
-	Lifecyclestoptime  sql.NullTime
-	Lifecyclereplica   sql.NullInt32
+	Lifecyclestarttime pgtype.Timestamptz
+	Lifecyclestoptime  pgtype.Timestamptz
+	Lifecyclereplica   pgtype.Int4
 	Lifecyclestatus    NullContainerStatus
 }
 
 func (q *Queries) GetContainerWithPagination(ctx context.Context, arg GetContainerWithPaginationParams) ([]GetContainerWithPaginationRow, error) {
-	rows, err := q.db.QueryContext(ctx, getContainerWithPagination, arg.ServiceID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, getContainerWithPagination, arg.ServiceID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -233,9 +226,6 @@ func (q *Queries) GetContainerWithPagination(ctx context.Context, arg GetContain
 		}
 		items = append(items, i)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -256,14 +246,14 @@ type InsertContainerParams struct {
 	Status         ContainerStatus
 	Name           string
 	ContainerPort  int32
-	PublicPort     sql.NullInt32
-	TerminatedTime sql.NullTime
-	CreatedTime    time.Time
+	PublicPort     pgtype.Int4
+	TerminatedTime pgtype.Timestamptz
+	CreatedTime    pgtype.Timestamptz
 	ServiceID      string
 }
 
 func (q *Queries) InsertContainer(ctx context.Context, arg InsertContainerParams) (Container, error) {
-	row := q.db.QueryRowContext(ctx, insertContainer,
+	row := q.db.QueryRow(ctx, insertContainer,
 		arg.UserID,
 		arg.Image,
 		arg.Status,
@@ -300,14 +290,14 @@ INSERT INTO container_lifecycles(
 
 type InsertContainerLifecycleParams struct {
 	ContainerID uuid.NullUUID
-	StartTime   time.Time
-	StopTime    sql.NullTime
+	StartTime   pgtype.Timestamptz
+	StopTime    pgtype.Timestamptz
 	Status      ContainerStatus
 	Replica     int32
 }
 
 func (q *Queries) InsertContainerLifecycle(ctx context.Context, arg InsertContainerLifecycleParams) (ContainerLifecycle, error) {
-	row := q.db.QueryRowContext(ctx, insertContainerLifecycle,
+	row := q.db.QueryRow(ctx, insertContainerLifecycle,
 		arg.ContainerID,
 		arg.StartTime,
 		arg.StopTime,
@@ -343,7 +333,7 @@ type InsertIntoContainerMetricsParams struct {
 }
 
 func (q *Queries) InsertIntoContainerMetrics(ctx context.Context, arg InsertIntoContainerMetricsParams) error {
-	_, err := q.db.ExecContext(ctx, insertIntoContainerMetrics,
+	_, err := q.db.Exec(ctx, insertIntoContainerMetrics,
 		arg.ContainerID,
 		arg.Cpus,
 		arg.Memory,
@@ -372,13 +362,13 @@ type UpdateContainerParams struct {
 	Status         ContainerStatus
 	Name           string
 	ContainerPort  int32
-	PublicPort     sql.NullInt32
-	TerminatedTime sql.NullTime
-	CreatedTime    time.Time
+	PublicPort     pgtype.Int4
+	TerminatedTime pgtype.Timestamptz
+	CreatedTime    pgtype.Timestamptz
 }
 
 func (q *Queries) UpdateContainer(ctx context.Context, arg UpdateContainerParams) error {
-	_, err := q.db.ExecContext(ctx, updateContainer,
+	_, err := q.db.Exec(ctx, updateContainer,
 		arg.ServiceID,
 		arg.Image,
 		arg.Status,
@@ -404,7 +394,7 @@ type UpdateContainerLifeCycleWithoutStopTimeParams struct {
 }
 
 func (q *Queries) UpdateContainerLifeCycleWithoutStopTime(ctx context.Context, arg UpdateContainerLifeCycleWithoutStopTimeParams) error {
-	_, err := q.db.ExecContext(ctx, updateContainerLifeCycleWithoutStopTime, arg.ID, arg.Replica)
+	_, err := q.db.Exec(ctx, updateContainerLifeCycleWithoutStopTime, arg.ID, arg.Replica)
 	return err
 }
 
@@ -419,13 +409,13 @@ WHERE id=$1
 
 type UpdateContainerLifecycleParams struct {
 	ID       uuid.UUID
-	StopTime sql.NullTime
+	StopTime pgtype.Timestamptz
 	Status   ContainerStatus
 	Replica  int32
 }
 
 func (q *Queries) UpdateContainerLifecycle(ctx context.Context, arg UpdateContainerLifecycleParams) error {
-	_, err := q.db.ExecContext(ctx, updateContainerLifecycle,
+	_, err := q.db.Exec(ctx, updateContainerLifecycle,
 		arg.ID,
 		arg.StopTime,
 		arg.Status,

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"dogker/lintang/container-service/biz/dal"
+	"dogker/lintang/container-service/biz/dal/db"
 	"dogker/lintang/container-service/biz/domain"
 	"dogker/lintang/container-service/biz/router"
 	"dogker/lintang/container-service/config"
@@ -45,7 +46,9 @@ func main() {
 	rmq := dal.InitRmq(cfg)
 
 	cc, err := grpc.NewClient(cfg.GRPC.MonitorURL+"?wait=30s", grpc.WithTransportCredentials(insecure.NewCredentials()))
-
+	if err != nil {
+		zap.L().Fatal("Newclient gprc (main)", zap.Error(err) )
+	}
 	// validation error custom
 	customValidationErr := CreateCustomValidationError()
 
@@ -56,8 +59,18 @@ func main() {
 	cSvc := di.InitContainerService(pg, rmq, cfg, cc)
 	InstallCURLInDkron()
 
+
 	router.MyRouter(h, cSvc)
 	h.Spin()
+	// gracefulShutdown
+	h.SetCustomSignalWaiter(func(err chan error) error {
+		db.ClosePostgres(pg.Pool)
+		rmq.Close()
+		cc.Close()
+		return nil
+	})
+
+
 }
 
 var lg *zap.Logger
@@ -106,8 +119,10 @@ func initZapLogger(cfg *config.Config) *hertzzap.Logger {
 	)
 	lg = zap.New(core)
 	zap.ReplaceGlobals(lg)
+
 	prodAndDevLogger := hertzzap.NewLogger(hertzzap.WithZapOptions(zap.WithFatalHook(zapcore.WriteThenPanic)),
 		hertzzap.WithCores(logsCores...))
+
 	return prodAndDevLogger
 }
 
@@ -161,7 +176,7 @@ func CreateCustomValidationError() *binding.ValidateConfig {
 	return validateConfig
 }
 
-// accessLogger
+// accessLogger nbawaan zap bagus ini pas di load testing
 func AccessLog() app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
 		start := time.Now()
@@ -181,6 +196,19 @@ func AccessLog() app.HandlerFunc {
 		)
 	}
 }
+
+// // bawaan hertz
+// func AccessLog() app.HandlerFunc {
+// 	return func(c context.Context, ctx *app.RequestContext) {
+// 		start := time.Now()
+// 		ctx.Next(c)
+// 		end := time.Now()
+// 		latency := end.Sub(start).Milliseconds()
+// 		hlog.CtxTracef(c, "status=%d cost=%d method=%s full_path=%s client_ip=%s host=%s method=%s",
+// 			ctx.Response.StatusCode(), latency,
+// 			ctx.Request.Header.Method(), ctx.Request.URI().PathOriginal(), ctx.ClientIP(), ctx.Request.Host(), string(ctx.Request.Header.Method()))
+// 	}
+// }
 
 type JobReq struct {
 	Name           string            `json:"name"`

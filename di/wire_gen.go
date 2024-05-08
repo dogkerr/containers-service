@@ -24,10 +24,11 @@ func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *con
 	dockerEngineAPI := webapi.CreateNewDockerEngineAPI(cfg)
 	dkronAPI := webapi.CreateDkronAPI(cfg)
 	monitorClient := webapi.NewMonitorClient(cc)
-	containerService := service.NewContainerService(containerRepository, dockerEngineAPI, dkronAPI, monitorClient)
+	minioAPI := webapi.NewMinioAPI(cfg)
+	containerService := service.NewContainerService(containerRepository, dockerEngineAPI, dkronAPI, monitorClient, minioAPI)
 	return containerService
 }
 
 // wire.go:
 
-var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, webapi.CreateDkronAPI, webapi.NewMonitorClient, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)), wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)), wire.Bind(new(service.MonitorClient), new(*webapi.MonitorClient)))
+var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, webapi.CreateDkronAPI, webapi.NewMonitorClient, webapi.NewMinioAPI, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)), wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)), wire.Bind(new(service.MonitorClient), new(*webapi.MonitorClient)), wire.Bind(new(service.MinioAPI), new(*webapi.MinioAPI)))

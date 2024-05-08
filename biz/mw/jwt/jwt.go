@@ -11,6 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	gojwt "github.com/golang-jwt/jwt/v4"
 	"github.com/hertz-contrib/jwt"
+	"go.uber.org/zap"
 )
 
 var (
@@ -71,18 +72,9 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 				"message": message,
 			})
 		},
-		// TokenLookup is a string in the form of "<source>:<name>" that is used
-		// to extract token from the request.
-		// Optional. Default value "header:Authorization".
-		// Possible values:
-		// - "header:<name>"
-		// - "query:<name>"
-		// - "cookie:<name>"
-		// - "param:<name>"
-		TokenLookup: "header: Authorization, query: token, cookie: jwt",
-		// TokenLookup: "query:token",
-		// TokenLookup: "cookie:token",
 
+		TokenLookup: "header: Authorization, query: token, cookie: jwt",
+	
 		// TokenHeadName is a string in the header. Default value is "Bearer". If you want empty value, use WithoutDefaultTokenHeadName.
 		TokenHeadName: "Bearer",
 
@@ -100,7 +92,7 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 		},
 	})
 	if err != nil {
-		log.Fatal("JWT Error:" + err.Error())
+		zap.L().Fatal("JWT Error:" + err.Error(), zap.Error(err))
 	}
 	return JwtMiddleware
 }

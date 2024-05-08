@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/streadway/amqp"
+	"go.uber.org/zap"
 )
 
 type RabbitMQ struct {
@@ -53,5 +54,6 @@ func NewRabbitMQ(cfg *config.Config) *RabbitMQ {
 }
 
 func (r *RabbitMQ) Close() error {
+	zap.L().Info("closing rabbitmq gracefully")
 	return r.Connection.Close()
 }

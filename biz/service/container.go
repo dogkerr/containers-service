@@ -4,8 +4,12 @@ import (
 	"context"
 	"dogker/lintang/container-service/biz/domain"
 	"fmt"
+	"mime/multipart"
+	"os"
 	"time"
 
+	"github.com/docker/docker/api/types"
+	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 )
 
@@ -32,6 +36,7 @@ type DockerEngineAPI interface {
 	Update(ctx context.Context, ctrID string, c *domain.Container, userID string) (err error)
 	ScaleX(ctx context.Context, ctrID string, replica uint64, userID string) error
 	IsPublicPortAndNameAvailable(ctx context.Context, wantedPorts []uint32, name string) error
+	BuildImageFromFile(ctx context.Context, file *os.File, imageName string) (types.ImageBuildResponse, error)
 }
 
 type DkronAPI interface {
@@ -43,19 +48,27 @@ type MonitorClient interface {
 	GetSpecificContainerMetrics(ctx context.Context, ctrID string, userID string, serviceStartTime time.Time) (*domain.Metric, error)
 }
 
+type MinioAPI interface {
+	UploadTarSourceCode(ctx context.Context, imageFile *multipart.FileHeader, imageName string) (*minio.UploadInfo, string, string, error)
+	GetObject(ctx context.Context, bucketName string, objectName string) (*os.File, string, error)
+}
+
 type ContainerService struct {
 	containerRepo ContainerRepository
 	dockerAPI     DockerEngineAPI
 	dkronAPI      DkronAPI
 	monitorClient MonitorClient
+	minioAPI      MinioAPI
 }
 
-func NewContainerService(c ContainerRepository, d DockerEngineAPI, dkron DkronAPI, monitorSvc MonitorClient) *ContainerService {
+func NewContainerService(c ContainerRepository, d DockerEngineAPI, dkron DkronAPI, monitorSvc MonitorClient,
+	minioAPI MinioAPI) *ContainerService {
 	return &ContainerService{
 		containerRepo: c,
 		dockerAPI:     d,
 		dkronAPI:      dkron,
 		monitorClient: monitorSvc,
+		minioAPI:      minioAPI,
 	}
 }
 
@@ -87,6 +100,60 @@ func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Conta
 	if err != nil {
 		return "", time.Now(), nil, err
 	}
+	return serviceId, d.CreatedTime, ctrLife, nil
+}
+
+func (s *ContainerService) CreateNewServiceAndUpload(ctx context.Context, d *domain.Container, imageFile *multipart.FileHeader,
+	imageName string) (string, time.Time, *domain.ContainerLifecycle, error) {
+
+	// upload image ke minio && build image
+
+	_, bucketName, objectName, err := s.minioAPI.UploadTarSourceCode(ctx, imageFile, imageName)
+	if err != nil {
+		zap.L().Error("UploadTarSourceCode minio", zap.Error(err))
+		return "", time.Now(), nil, err
+	}
+
+	imageFileMinio, fileName, err := s.minioAPI.GetObject(ctx, bucketName, objectName)
+	if err != nil {
+		return "", time.Now(), nil, err
+	}
+
+	buildRes, err := s.dockerAPI.BuildImageFromFile(ctx, imageFileMinio, imageName)
+	if err != nil {
+		return "", time.Now(), nil, err
+	}
+	defer imageFileMinio.Close()
+	defer buildRes.Body.Close()
+
+	os.Remove(fileName)
+
+	// setelah build image , create swarm service
+	d.Image = imageName
+	serviceId, err := s.dockerAPI.CreateService(ctx, d)
+	if err != nil {
+		zap.L().Error("s.dockerAPI.CreateService", zap.Error(err))
+		return "", time.Now(), nil, err
+	}
+
+	d.ServiceID = serviceId
+	d.CreatedTime = time.Now()
+
+	ctrRowId, err := s.containerRepo.Insert(ctx, d)
+	if err != nil {
+		return "", time.Now(), nil, err
+	}
+
+	ctrLife, err := s.containerRepo.InsertLifecycle(ctx, &domain.ContainerLifecycle{
+		ContainerID: ctrRowId.ID,
+		StartTime:   d.CreatedTime,
+		Status:      domain.ContainerStatusRUN,
+		Replica:     d.Replica,
+	})
+	if err != nil {
+		return "", time.Now(), nil, err
+	}
+
 	return serviceId, d.CreatedTime, ctrLife, nil
 }
 

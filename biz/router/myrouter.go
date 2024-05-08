@@ -12,6 +12,7 @@ import (
 	"dogker/lintang/container-service/biz/router/middleware"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -33,6 +34,8 @@ type ContainerService interface {
 	ScaleX(ctx context.Context, userID string, ctrID string, replica uint64) error
 	Schedule(ctx context.Context, userID string, ctrID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction) error
 	ScheduleCreate(ctx context.Context, userID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error
+	CreateNewServiceAndUpload(ctx context.Context, d *domain.Container, imageFile *multipart.FileHeader,
+		imageName string) (string, time.Time, *domain.ContainerLifecycle, error)
 }
 
 type ContainerHandler struct {
@@ -51,6 +54,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 		ctrH := root.Group("/containers")
 		{
 			ctrH.POST("/", append(middleware.Protected(), handler.CreateContainer)...)
+			ctrH.POST("/upload", append(middleware.Protected(), handler.CreateContainerAndBuildImage)...)
 			ctrH.GET("/", append(middleware.Protected(), handler.GetUsersContainer)...)
 			ctrH.GET("/:id", append(middleware.Protected(), handler.GetContainer)...)
 			ctrH.POST("/:id/start", append(middleware.Protected(), handler.StartContainer)...)
@@ -68,6 +72,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/scheduler/create", handler.ScheduleCreate)
 			ctrH.POST("/scheduler/:id/terminate", handler.ScheduleTerminate)
 			// ctrH.POST("/scheduler/:id/create", handler. ))
+
 		}
 	}
 }
@@ -79,7 +84,7 @@ type ResponseError struct {
 
 type createServiceReq struct {
 	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_ dan tidak boleh ada spasi'"`
-	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:'"`
+	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
 	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
 	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
 	Limit       domain.Resource   `json:"limit,required; msg:'resource limit harus anda isi '"`
@@ -155,6 +160,80 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 			ContainerLifecycles: []domain.ContainerLifecycle{*ctrLife},
 		},
 	}
+	c.JSON(http.StatusOK, resp)
+}
+
+type createServiceAndBuildImageReq struct {
+	Name string `form:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_ dan tidak boleh ada spasi'"`
+	// Image       string            `form:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
+	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
+	Env         []string              `form:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
+	Limit       domain.Resource       `form:"limit,required; msg:'resource limit harus anda isi '"`
+	Reservation domain.Resource       `form:"reservation,omitempty" `
+	Replica     int64                 `form:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
+	Endpoint    []domain.Endpoint     `form:"endpoint,required" vd:"msg:'endpoint wajib diisi'""`
+	ImageTar    *multipart.FileHeader `form:"image,required" vd:"msg:'endpoint wajib diisi'"`
+	ImageName   string                `form:"imageName,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
+}
+
+func (m *ContainerHandler) CreateContainerAndBuildImage(ctx context.Context, c *app.RequestContext) {
+	userId, _ := c.Get("userID")
+	var req createServiceAndBuildImageReq
+	err := c.BindForm(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+
+	var dEndpoint []domain.Endpoint
+	for _, endp := range req.Endpoint {
+		dEndpoint = append(dEndpoint, domain.Endpoint{
+			TargetPort:    endp.TargetPort,
+			PublishedPort: endp.PublishedPort,
+			Protocol:      endp.Protocol,
+		})
+	}
+	svcId, createdTime, ctrLife, err := m.svc.CreateNewServiceAndUpload(ctx, &domain.Container{
+		Name:        req.Name,
+		CreatedTime: time.Now(),
+		Image:       req.ImageName,
+		Labels:      req.Labels,
+		Env:         req.Env,
+		Limit:       domain.Resource(req.Limit),
+		Reservation: domain.Resource(req.Reservation),
+		Replica:     uint64(req.Replica),
+		Endpoint:    dEndpoint,
+		UserID:      userId.(string),
+	}, req.ImageTar, req.ImageName)
+	if err != nil {
+
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+
+	resp := &createContainerResp{
+		Message: "Your Container created successfully",
+		Container: domain.Container{
+			CreatedTime: createdTime,
+			ServiceID:   svcId,
+			Name:        req.Name,
+			Labels:      req.Labels,
+			Replica:     3,
+			Limit: domain.Resource{
+				CPUs:   req.Limit.CPUs,
+				Memory: req.Limit.Memory,
+			},
+			Image:               req.ImageName,
+			Env:                 req.Env,
+			Endpoint:            dEndpoint,
+			UserID:              userId.(string),
+			Status:              domain.ContainerStatusRUN,
+			ContainerPort:       int(req.Endpoint[0].TargetPort),
+			PublicPort:          int(req.Endpoint[0].PublishedPort),
+			ContainerLifecycles: []domain.ContainerLifecycle{*ctrLife},
+		},
+	}
+
 	c.JSON(http.StatusOK, resp)
 }
 

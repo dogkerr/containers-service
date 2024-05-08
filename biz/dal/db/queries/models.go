@@ -5,12 +5,11 @@
 package queries
 
 import (
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ContainerStatus string
@@ -104,17 +103,17 @@ type Container struct {
 	Status         ContainerStatus
 	Name           string
 	ContainerPort  int32
-	PublicPort     sql.NullInt32
-	TerminatedTime sql.NullTime
-	CreatedTime    time.Time
+	PublicPort     pgtype.Int4
+	TerminatedTime pgtype.Timestamptz
+	CreatedTime    pgtype.Timestamptz
 	ServiceID      string
 }
 
 type ContainerLifecycle struct {
 	ID          uuid.UUID
 	ContainerID uuid.NullUUID
-	StartTime   time.Time
-	StopTime    sql.NullTime
+	StartTime   pgtype.Timestamptz
+	StopTime    pgtype.Timestamptz
 	Status      ContainerStatus
 	Replica     int32
 }

@@ -22,12 +22,14 @@ var ProviderSet wire.ProviderSet = wire.NewSet(
 	db.NewContainerRepo,
 	webapi.CreateDkronAPI,
 	webapi.NewMonitorClient,
+	webapi.NewMinioAPI,
 
 	wire.Bind(new(router.ContainerService), new(*service.ContainerService)),
 	wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)),
 	wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)),
 	wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)),
 	wire.Bind(new(service.MonitorClient), new(*webapi.MonitorClient)),
+	wire.Bind(new(service.MinioAPI), new(*webapi.MinioAPI)),
 )
 
 func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config,

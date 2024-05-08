@@ -5,6 +5,8 @@ import (
 	"dogker/lintang/container-service/biz/domain"
 	"dogker/lintang/container-service/config"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -670,5 +672,21 @@ func (d *DockerEngineAPI) ScaleX(ctx context.Context, ctrID string, replica uint
 	}
 
 	return nil
+
+}
+
+// BuildImage
+// @Description BuildImage from file
+func (d *DockerEngineAPI) BuildImageFromFile(ctx context.Context, file *os.File, imageName string) (types.ImageBuildResponse, error) {
+	imageResBuild, err := d.Cli.ImageBuild(ctx, file, types.ImageBuildOptions{
+		Tags: []string{imageName},
+	})
+	if err !=nil {
+		zap.L().Error("ImageBuild dockerCLI", zap.Error(err))
+		return types.ImageBuildResponse{},  domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+	io.Copy(os.Stdout, imageResBuild.Body)
+	defer imageResBuild.Body.Close()
+	return imageResBuild, nil
 
 }
