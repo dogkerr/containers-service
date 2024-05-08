@@ -13,6 +13,7 @@ import (
 	"dogker/lintang/container-service/config"
 
 	"github.com/google/wire"
+	"google.golang.org/grpc"
 )
 
 var ProviderSet wire.ProviderSet = wire.NewSet(
@@ -20,14 +21,17 @@ var ProviderSet wire.ProviderSet = wire.NewSet(
 	webapi.CreateNewDockerEngineAPI,
 	db.NewContainerRepo,
 	webapi.CreateDkronAPI,
+	webapi.NewMonitorClient,
 
 	wire.Bind(new(router.ContainerService), new(*service.ContainerService)),
 	wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)),
 	wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)),
 	wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)),
+	wire.Bind(new(service.MonitorClient), new(*webapi.MonitorClient)),
 )
 
-func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config) *service.ContainerService {
+func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config,
+	cc *grpc.ClientConn) *service.ContainerService {
 	wire.Build(
 		ProviderSet,
 	)

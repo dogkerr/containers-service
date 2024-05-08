@@ -75,4 +75,10 @@ WHERE id=$1;
 
 
 
+-- name: InsertIntoContainerMetrics :exec
+INSERT INTO container_metrics(
+	container_id, cpus, memory, network_ingress, network_egress
+) VALUES (
+	$1, $2, $3, $4, $5
+) RETURNING *;
 

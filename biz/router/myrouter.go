@@ -220,7 +220,7 @@ func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestCon
 
 	resp, err := m.svc.StartContainer(ctx, req.ID, userID.(string))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, getContainerRes{resp})
@@ -240,7 +240,7 @@ func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestCont
 	}
 	err = m.svc.StopContainer(ctx, req.ID, userID.(string))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully stopped", req.ID)})
@@ -256,7 +256,7 @@ func (m *ContainerHandler) DeleteContainer(ctx context.Context, c *app.RequestCo
 	}
 	err = m.svc.DeleteContainer(ctx, req.ID, userID.(string))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully deleted", req.ID)})
@@ -281,7 +281,7 @@ func (m *ContainerHandler) UpdateContainer(ctx context.Context, c *app.RequestCo
 	var path getContainerReq
 	err = c.BindAndValidate(&path)
 	if err != nil {
-		c.JSON(consts.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
 
@@ -355,7 +355,7 @@ func (m *ContainerHandler) ScheduledStop(ctx context.Context, c *app.RequestCont
 
 	err = m.svc.StopContainer(ctx, req.ID, req.UserID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
 
@@ -371,7 +371,7 @@ func (m *ContainerHandler) ScheduledStart(ctx context.Context, c *app.RequestCon
 	}
 	_, err = m.svc.StartContainer(ctx, req.ID, req.UserID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, "container started")
@@ -381,7 +381,7 @@ type scheduleCreateServiceReq struct {
 	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -/_ dan tidak boleh ada spasi'"`
 	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:'"`
 	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
-	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
+	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_=]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
 	Limit       domain.Resource   `json:"limit,required" vd:" msg:'resource limit harus anda isi '" `
 	Reservation domain.Resource   `json:"reservation,omitempty" `
 	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
@@ -439,7 +439,7 @@ func (m *ContainerHandler) ScheduleTerminate(ctx context.Context, c *app.Request
 
 	err = m.svc.DeleteContainer(ctx, req.ID, req.UserID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
 

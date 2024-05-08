@@ -29,7 +29,7 @@ type User struct {
 }
 
 func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
-	var err error
+
 	publicKeyBlock, _ := pem.Decode([]byte(PublicKeyAuthServer))
 	publicKey, err := x509.ParsePKIXPublicKey(publicKeyBlock.Bytes)
 	if err != nil {

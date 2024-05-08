@@ -17,6 +17,8 @@ import (
 	"time"
 
 	hertzzap "github.com/hertz-contrib/logger/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
@@ -42,6 +44,8 @@ func main() {
 	pg := dal.InitPg(cfg) // init postgres & rabbitmq
 	rmq := dal.InitRmq(cfg)
 
+	cc, err := grpc.NewClient(cfg.GRPC.MonitorURL+"?wait=30s", grpc.WithTransportCredentials(insecure.NewCredentials()))
+
 	// validation error custom
 	customValidationErr := CreateCustomValidationError()
 
@@ -49,7 +53,7 @@ func main() {
 
 	h.Use(AccessLog())
 
-	cSvc := di.InitContainerService(pg, rmq, cfg)
+	cSvc := di.InitContainerService(pg, rmq, cfg, cc)
 	InstallCURLInDkron()
 
 	router.MyRouter(h, cSvc)

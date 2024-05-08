@@ -19,6 +19,7 @@ type ContainerRepository interface {
 	GetLifecycle(ctx context.Context, lifeId string) (*domain.ContainerLifecycle, error)
 	UpdateLifecycle(ctx context.Context, lifeId string, stopTime time.Time, status domain.ContainerStatus, replica uint32) error
 	UpdateCtrLifeCycleWithoutStopTime(ctx context.Context, replica uint64, lifeID string) error
+	InsertContainerMetrics(ctx context.Context, metrics domain.Metric) error
 }
 
 type DockerEngineAPI interface {
@@ -30,6 +31,7 @@ type DockerEngineAPI interface {
 	Delete(ctx context.Context, ctrID string) error
 	Update(ctx context.Context, ctrID string, c *domain.Container, userID string) (err error)
 	ScaleX(ctx context.Context, ctrID string, replica uint64, userID string) error
+	IsPublicPortAndNameAvailable(ctx context.Context, wantedPorts []uint32, name string) error
 }
 
 type DkronAPI interface {
@@ -37,17 +39,23 @@ type DkronAPI interface {
 	AddCreateJob(ctx context.Context, schedule uint64, action domain.ContainerAction, userID string, ctr *domain.Container) error
 }
 
+type MonitorClient interface {
+	GetSpecificContainerMetrics(ctx context.Context, ctrID string, userID string, serviceStartTime time.Time) (*domain.Metric, error)
+}
+
 type ContainerService struct {
 	containerRepo ContainerRepository
 	dockerAPI     DockerEngineAPI
 	dkronAPI      DkronAPI
+	monitorClient MonitorClient
 }
 
-func NewContainerService(c ContainerRepository, d DockerEngineAPI, dkron DkronAPI) *ContainerService {
+func NewContainerService(c ContainerRepository, d DockerEngineAPI, dkron DkronAPI, monitorSvc MonitorClient) *ContainerService {
 	return &ContainerService{
 		containerRepo: c,
 		dockerAPI:     d,
 		dkronAPI:      dkron,
+		monitorClient: monitorSvc,
 	}
 }
 
@@ -85,13 +93,29 @@ func (s *ContainerService) CreateNewService(ctx context.Context, d *domain.Conta
 // GetUserContainers -.
 // @Description get semua container milik user , tapi ini yg masih run sebagai swarm service doang jadi masih salah
 func (s *ContainerService) GetUserContainers(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error) {
+	// get all user container di repo
 	userCtrsDb, err := s.containerRepo.GetAllUserContainers(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
+
+	// mendapatkan semua container milik user di docker api
 	ctrsDocker, err := s.dockerAPI.GetAllUserContainers(ctx, userID, *userCtrsDb)
 	if err != nil {
 		return nil, err
+	}
+
+	// append ctr yg status nya terminated, karena di dockerapi ga kedeteck sama sekali
+	var ctrDockerSet map[string]struct{} = make(map[string]struct{}) // set ctr list yg dikasih dockerapi
+	for _, ctr := range *ctrsDocker {
+		ctrDockerSet[ctr.ServiceID] = struct{}{}
+	}
+
+	for _, ctrDB := range *userCtrsDb {
+		if _, ok := ctrDockerSet[ctrDB.ServiceID]; !ok {
+			// kalo ctr terminated gak ada di list ctr docker api
+			*ctrsDocker = append(*ctrsDocker, ctrDB)
+		}
 	}
 
 	return ctrsDocker, nil
@@ -110,6 +134,11 @@ func (s *ContainerService) GetContainer(ctx context.Context, ctrID string, userI
 	ctrDocker, err := s.dockerAPI.Get(ctx, ctrID, ctrDB)
 	if err != nil {
 		return nil, err
+	}
+
+	if ctrDocker == nil {
+		// kalo status container terminated, di docker api gak kedeteck , jadi ambil dari repo
+		ctrDocker = ctrDB // tapi fieldnya gak lengkapp
 	}
 	return ctrDocker, nil
 }
@@ -145,6 +174,14 @@ func (s *ContainerService) StartContainer(ctx context.Context, ctrID string, use
 	if err != nil {
 		return nil, err
 	}
+
+	// update container status to run
+	ctrDB.Status = domain.ContainerStatusRUN
+	err = s.containerRepo.Update(ctx, ctrDB)
+	if err != nil {
+		return nil, err
+	}
+
 	ctr.ContainerLifecycles = append(ctr.ContainerLifecycles, *newLife)
 
 	return ctr, nil
@@ -159,6 +196,21 @@ func (s *ContainerService) StopContainer(ctx context.Context, ctrID string, user
 	}
 	if ctrDB.UserID != userID {
 		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+
+	// catat metrics sebelum di stop, biar di prometheus gak fetch metrics cpu & memorynya = 0 & metrics cpu dan  memory =  0 gak dikirim ke billing-service
+	// get last container metrics from monitoservice
+	// ini harus dilakuin sebelum stop docker service, biar cpunya gak kedeteck 0
+	metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrID, userID, ctrDB.CreatedTime)
+	if err != nil {
+		return err
+	}
+
+	// insert last metrics ino container_metrics table
+	metric.ContainerID = ctrDB.ID
+	err = s.containerRepo.InsertContainerMetrics(ctx, *metric)
+	if err != nil {
+		return err
 	}
 
 	// stop container
@@ -176,6 +228,14 @@ func (s *ContainerService) StopContainer(ctx context.Context, ctrID string, user
 	if err != nil {
 		return err
 	}
+
+	// update row di table container jd stop statusnya
+	ctrDB.Status = domain.ContainerStatusSTOPPED
+	err = s.containerRepo.Update(ctx, ctrDB)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -190,6 +250,26 @@ func (s *ContainerService) DeleteContainer(ctx context.Context, ctrID string, us
 		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
 	}
 
+	// get last lifecycleID , berdasaarkan starttime terbaru
+	lifecycles := ctrDB.ContainerLifecycles
+	lifeCycleStatus := qSortWaktu(lifecycles).Status
+
+	// insert metrics jika status container sebelumya tidak stop, biar si billing service gak dapet metrics 0 cpu & memory
+	if lifeCycleStatus != domain.ContainerStatusSTOPPED {
+		// get last container metrics from monitoservice
+		metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrID, userID, ctrDB.CreatedTime)
+		if err != nil {
+			return err
+		}
+
+		// insert last metrics ino container_metrics table
+		metric.ContainerID = ctrDB.ID
+		err = s.containerRepo.InsertContainerMetrics(ctx, *metric)
+		if err != nil {
+			return err
+		}
+	}
+
 	// delete container
 	err = s.dockerAPI.Delete(ctx, ctrID)
 	if err != nil {
@@ -198,10 +278,23 @@ func (s *ContainerService) DeleteContainer(ctx context.Context, ctrID string, us
 
 	// update terminatedTime di tabel containers
 	ctrDB.TerminatedTime = time.Now()
+	ctrDB.Status = domain.ContainerStatusSTOPPED
 	err = s.containerRepo.Update(ctx, ctrDB)
 	if err != nil {
 		return err
 	}
+
+	// update status ctrlifecycle jadi stop
+	lifeCycleID := qSortWaktu(ctrDB.ContainerLifecycles).ID
+
+	err = s.containerRepo.UpdateLifecycle(ctx, lifeCycleID, time.Now(), domain.ContainerStatusSTOPPED, uint32(ctrDB.Replica))
+	if err != nil {
+		return err
+	}
+
+	// update status container jd stop di tabel container
+	ctrDB.Status = domain.ContainerStatusSTOPPED
+	err = s.containerRepo.Update(ctx, ctrDB)
 	return nil
 }
 
@@ -215,6 +308,24 @@ func (s *ContainerService) UpdateContainer(ctx context.Context, d *domain.Contai
 	}
 	if ctrDB.UserID != userID {
 		return "", domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
+	}
+
+	// cek apakah public port dan nama container baru yang diinginkan user tersedia
+	var endpointDBs map[uint64]struct{} = make(map[uint64]struct{})
+	for _, endpointDB := range ctrDB.Endpoint {
+		endpointDBs[endpointDB.PublishedPort] = struct{}{}
+	}
+
+	var wantedPorts []uint32
+	for _, endpoint := range d.Endpoint {
+		if _, ok := endpointDBs[endpoint.PublishedPort]; !ok {
+			wantedPorts = append(wantedPorts, uint32(endpoint.PublishedPort)) // hanya append publicport baru yang beda sama public port container sebelumnya
+		}
+	}
+
+	err = s.dockerAPI.IsPublicPortAndNameAvailable(ctx, wantedPorts, d.Name)
+	if err != nil {
+		return "", err
 	}
 
 	// update container di docker
@@ -316,10 +427,22 @@ func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, sc
 		// 86400 * 30 = detik adalam 1 bulan
 		scheduledTimeSecond = 86400 * 30 * scheduledTime
 	}
-	err := s.dkronAPI.AddCreateJob(ctx, scheduledTimeSecond, action, userID, ctr)
+
+	// cek apakah public port yang diinginkan user tersedia
+	var wantedPorts []uint32
+	for _, endpoint := range ctr.Endpoint {
+		wantedPorts = append(wantedPorts, uint32(endpoint.PublishedPort))
+	}
+	err := s.dockerAPI.IsPublicPortAndNameAvailable(ctx, wantedPorts, ctr.Name)
 	if err != nil {
-		zap.L().Error("AddCreateJob dkron", zap.String("ctrID", ctr.ID),  zap.String("userID", userID))
-		return  err 
+		return err
+	}
+
+	// bikin cron job di dkron
+	err = s.dkronAPI.AddCreateJob(ctx, scheduledTimeSecond, action, userID, ctr)
+	if err != nil {
+		zap.L().Error("AddCreateJob dkron", zap.String("ctrID", ctr.ID), zap.String("userID", userID))
+		return err
 	}
 	return nil
 }

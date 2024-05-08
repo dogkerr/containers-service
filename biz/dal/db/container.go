@@ -69,6 +69,7 @@ func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID s
 				ServiceID:           ctr.ServiceID,
 				TerminatedTime:      terminatedtime,
 				ContainerLifecycles: append(newCl, cLife),
+				Replica:             uint64(ctr.Lifecyclereplica.Int32),
 			})
 		} else {
 			res[len(res)-1].ContainerLifecycles = append(res[len(res)-1].ContainerLifecycles,
@@ -85,9 +86,11 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 	ctrs, err := q.GetContainer(ctx, serviceID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			hlog.Debug("container dengan id: "+serviceID+" tidak ada di database", err)
+			zap.L().Debug("GetContainer (containerRepository)", zap.Error(err), zap.String("serviceID", serviceID))
+
 			return nil, domain.WrapErrorf(err, domain.ErrNotFound, "container dengan id: "+serviceID+" tidak ada di database")
 		}
+		zap.L().Error("GetContainer (containerRepository)", zap.Error(err), zap.String("serviceID", serviceID))
 		return nil, domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
 	}
 	var res domain.Container
@@ -123,6 +126,7 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 				ServiceID:           serviceID,
 				TerminatedTime:      terminatedtime,
 				ContainerLifecycles: append(newCl, cLife),
+				Replica:             uint64(ctr.Lifecyclereplica.Int32),
 			}
 		} else {
 			res.ContainerLifecycles = append(res.ContainerLifecycles,
@@ -255,6 +259,8 @@ func (r *ContainerRepository) UpdateLifecycle(ctx context.Context, lifeId string
 		Replica:  int32(replica),
 	})
 	if err != nil {
+		zap.L().Error("UpdateContainerLifecycle", zap.Error(err), zap.String("lifeID", lifeId))
+
 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	return nil
@@ -271,5 +277,24 @@ func (r *ContainerRepository) UpdateCtrLifeCycleWithoutStopTime(ctx context.Cont
 		ID:      googleuuid.UUID(lifeIduuid),
 		Replica: int32(replica),
 	})
+	return nil
+}
+
+func (r *ContainerRepository) InsertContainerMetrics(ctx context.Context, metrics domain.Metric) error {
+	q := queries.New(r.db.Pool)
+
+	ctrID, err := uuid.FromString(metrics.ContainerID)
+	err = q.InsertIntoContainerMetrics(ctx, queries.InsertIntoContainerMetricsParams{
+		ContainerID:    googleuuid.UUID(ctrID),
+		Cpus:           float64(metrics.CpuUsage),
+		Memory:         float64(metrics.MemoryUsage),
+		NetworkIngress: float64(metrics.NetworkIngressUsage),
+		NetworkEgress:  float64(metrics.NetworkEgressUsage),
+	})
+	if err != nil {
+		zap.L().Error("InsertIntoContainerMetrics sqlc", zap.Error(err), zap.String("ctrID", metrics.ContainerID), zap.Float32("cpus", metrics.CpuUsage))
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, "internal server error")
+	}
+
 	return nil
 }

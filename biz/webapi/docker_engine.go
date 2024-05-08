@@ -134,6 +134,40 @@ type dataServiceFromDB struct {
 	ID           string
 }
 
+func (d *DockerEngineAPI) IsPublicPortAndNameAvailable(ctx context.Context, wantedPorts []uint32, name string) error {
+
+	resp, err := d.Cli.ServiceList(ctx, types.ServiceListOptions{})
+	if err != nil {
+		zap.L().Debug("ServiceList dockerCLi", zap.String("cause", "belum ada service di docker"))
+	}
+
+	allocatedPortsSet := make(map[uint32]struct{})
+	for _, svc := range resp {
+		allocatedPortsArr := svc.Endpoint.Ports
+		for _, allocatedPort := range allocatedPortsArr {
+			allocatedPortsSet[allocatedPort.PublishedPort] = struct{}{}
+		}
+	}
+
+	for _, allocatedPort := range wantedPorts {
+		if _, ok := allocatedPortsSet[allocatedPort]; ok {
+			return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already allocated by other user", allocatedPort))
+		}
+	}
+
+	serviceNameSet := make(map[string]struct{})
+	for _, svc := range resp {
+		serviceNameSet[svc.Spec.Name] = struct{}{}
+	}
+
+	// check apakah container name yang diinginkan user available
+	if _, ok := serviceNameSet[name]; ok {
+		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container name %s already allocated by other user", serviceNameSet))
+	}
+
+	return nil
+}
+
 // GetAllUserContainers
 // @Description mendapatkan semua swarm service milik  user berdasarkan label user_id
 func (d *DockerEngineAPI) GetAllUserContainers(ctx context.Context, userID string, cDB []domain.Container) (*[]domain.Container, error) {
@@ -351,7 +385,7 @@ func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFr
 					"loki-url":             "http://localhost:3100/loki/api/v1/push",
 					"loki-retries":         "5",
 					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=" + cDB.Name + ",userId=" + userID,
+					"loki-external-labels": "job=docker,container_name=" + cDB.Name + ",userId=" + userID + ",swarm_service=" + cDB.Name,
 				},
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
@@ -470,7 +504,7 @@ func (d *DockerEngineAPI) Stop(ctx context.Context, ctrID string, userID string,
 					"loki-url":             "http://localhost:3100/loki/api/v1/push",
 					"loki-retries":         "5",
 					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=" + cDB.Name + ",userId=" + userID,
+					"loki-external-labels": "job=docker,container_name=" + cDB.Name + ",userId=" + userID + ",swarm_service=" + cDB.Name,
 				},
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},

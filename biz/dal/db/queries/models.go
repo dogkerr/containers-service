@@ -16,8 +16,8 @@ import (
 type ContainerStatus string
 
 const (
-	ContainerStatusRUN     ContainerStatus = "RUN"
-	ContainerStatusSTOPPED ContainerStatus = "STOP"
+	ContainerStatusRUN  ContainerStatus = "RUN"
+	ContainerStatusSTOP ContainerStatus = "STOP"
 )
 
 func (e *ContainerStatus) Scan(src interface{}) error {
@@ -117,6 +117,15 @@ type ContainerLifecycle struct {
 	StopTime    sql.NullTime
 	Status      ContainerStatus
 	Replica     int32
+}
+
+type ContainerMetric struct {
+	ID             uuid.UUID
+	ContainerID    uuid.UUID
+	Cpus           float64
+	Memory         float64
+	NetworkIngress float64
+	NetworkEgress  float64
 }
 
 type Dashboard struct {

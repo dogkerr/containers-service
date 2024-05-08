@@ -14,18 +14,20 @@ import (
 	"dogker/lintang/container-service/biz/webapi"
 	"dogker/lintang/container-service/config"
 	"github.com/google/wire"
+	"google.golang.org/grpc"
 )
 
 // Injectors from wire.go:
 
-func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config) *service.ContainerService {
+func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config, cc *grpc.ClientConn) *service.ContainerService {
 	containerRepository := db.NewContainerRepo(pg)
 	dockerEngineAPI := webapi.CreateNewDockerEngineAPI(cfg)
 	dkronAPI := webapi.CreateDkronAPI(cfg)
-	containerService := service.NewContainerService(containerRepository, dockerEngineAPI, dkronAPI)
+	monitorClient := webapi.NewMonitorClient(cc)
+	containerService := service.NewContainerService(containerRepository, dockerEngineAPI, dkronAPI, monitorClient)
 	return containerService
 }
 
 // wire.go:
 
-var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, webapi.CreateDkronAPI, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)), wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)))
+var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, webapi.CreateDkronAPI, webapi.NewMonitorClient, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)), wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)), wire.Bind(new(service.MonitorClient), new(*webapi.MonitorClient)))

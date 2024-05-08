@@ -55,7 +55,6 @@ services:
       - 8888:8888
     env_file:
       - .env 
-
 # 
   dkron:
     image: dkron/dkron:3.2.7

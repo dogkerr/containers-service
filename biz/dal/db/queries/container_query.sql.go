@@ -326,6 +326,33 @@ func (q *Queries) InsertContainerLifecycle(ctx context.Context, arg InsertContai
 	return i, err
 }
 
+const insertIntoContainerMetrics = `-- name: InsertIntoContainerMetrics :exec
+INSERT INTO container_metrics(
+	container_id, cpus, memory, network_ingress, network_egress
+) VALUES (
+	$1, $2, $3, $4, $5
+) RETURNING id, container_id, cpus, memory, network_ingress, network_egress
+`
+
+type InsertIntoContainerMetricsParams struct {
+	ContainerID    uuid.UUID
+	Cpus           float64
+	Memory         float64
+	NetworkIngress float64
+	NetworkEgress  float64
+}
+
+func (q *Queries) InsertIntoContainerMetrics(ctx context.Context, arg InsertIntoContainerMetricsParams) error {
+	_, err := q.db.ExecContext(ctx, insertIntoContainerMetrics,
+		arg.ContainerID,
+		arg.Cpus,
+		arg.Memory,
+		arg.NetworkIngress,
+		arg.NetworkEgress,
+	)
+	return err
+}
+
 const updateContainer = `-- name: UpdateContainer :exec
 UPDATE containers
 SET 

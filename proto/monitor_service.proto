@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package  dogker.lintang.monitor_service.pc;
+// import "google/protobuf/empty.proto";
+// import "google/protobuf/any.proto";
+// import "google/protobuf/timestamp.proto";
+import "google/protobuf/timestamp.proto";
+
+/*
+Api contract:
+
+
+
+----------------
+
+3.Buat Network service dari container service:
+{
+	publishedPort: int,
+	containerPort: int,
+	containerId: int
+
+}
+
+*/
+
+
+option go_package = "dogker/lintang/monitor-service/pb";
+
+
+enum ContainerStatus {
+	RUN = 0;
+	STOPPED = 1;
+}
+
+
+
+message ContainerLifeCycles {
+    string id = 1;
+    string container_id = 2;
+    google.protobuf.Timestamp start_time= 3;
+    google.protobuf.Timestamp stop_time = 4;
+	uint64 replica = 7;
+	ContainerStatus status = 8;
+}
+
+
+
+
+message Container {
+	string id = 1;
+	string imageUrl = 2;
+	ContainerStatus status = 3;
+	string name = 4;
+	uint64 container_port = 5;
+	uint64 public_port = 6;
+	google.protobuf.Timestamp created_time = 7;
+	float cpu_usage = 8;
+	float memory_usage = 9;
+	float network_ingress_usage = 10;
+	float network_egress_usage = 11;
+	string service_id = 12;
+	google.protobuf.Timestamp terminatedTime = 13;
+	repeated ContainerLifeCycles all_container_lifecycles = 14;
+	
+}
+
+
+
+message GetAllUserContainerResourceUsageResponse {
+	google.protobuf.Timestamp currentTime = 1;
+	float all_cpu_usage = 2;
+	float all_memory_usage = 3;
+	float all_network_ingress_usage = 4;
+	float all_network_egress_usage = 5;
+	repeated Container user_container =6;
+	google.protobuf.Timestamp  fromTime =7;
+}
+
+
+message GetUserContainerResourceUsageRequest {
+	string userId = 1;
+	google.protobuf.Timestamp  fromTime = 2;
+}
+
+message GetSpecificContainerResourceUsageRequest {
+	string userId = 1;
+	google.protobuf.Timestamp  fromTime = 2;
+	string containerId = 3;
+}
+
+message GetSpecificContainerResourceUsageResponse {
+	google.protobuf.Timestamp currentTime = 1;
+	Container user_container = 2;
+	google.protobuf.Timestamp  fromTime =7;
+
+}
+
+service MonitorService {
+	rpc GetAllUserContainerResourceUsage(GetUserContainerResourceUsageRequest) returns ( GetAllUserContainerResourceUsageResponse);
+	rpc GetSpecificContainerResourceUsage(GetSpecificContainerResourceUsageRequest) returns (GetSpecificContainerResourceUsageResponse);
+}
+
+
+
+
+
+

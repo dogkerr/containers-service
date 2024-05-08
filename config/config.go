@@ -22,6 +22,7 @@ type (
 
 		Docker
 		Dkron
+		Auth
 	}
 
 	// App -.
@@ -57,7 +58,8 @@ type (
 	}
 
 	GRPC struct {
-		URLGrpc string `json:"urlGRPC" yaml:"urlGRPC" env:"URL_GRPC"`
+		URLGrpc    string `json:"urlGRPC" yaml:"urlGRPC" env:"URL_GRPC"`
+		MonitorURL string `json:"monitor_client" env:"GRPC_CLIENT"`
 	}
 
 	RabbitMQ struct {
@@ -68,9 +70,12 @@ type (
 		DockerHost string `json:"docker_host" env:"DOCKER_HOST"`
 	}
 	Dkron struct {
-		DkronURL string `json:"dkron_url" env:"DKRON_URL"`
+		DkronURL     string `json:"dkron_url" env:"DKRON_URL"`
 		MyServiceURL string `json:"ctr_svc_url" env:"CTR_URL"`
-}
+	}
+	Auth struct {
+		PublicKeyAuth string `json:"pubkey_auth" env:"PUBLIC_KEY_AUTH"`
+	}
 )
 
 // NewConfig returns app config.
