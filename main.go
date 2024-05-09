@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"dogker/lintang/container-service/biz/dal"
-	"dogker/lintang/container-service/biz/dal/db"
 	"dogker/lintang/container-service/biz/domain"
 	"dogker/lintang/container-service/biz/router"
 	"dogker/lintang/container-service/config"
@@ -25,11 +24,11 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/app/server/binding"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
+	"github.com/cloudwego/hertz/pkg/route"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/natefinch/lumberjack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
@@ -37,7 +36,6 @@ func main() {
 	logsCores := initZapLogger(cfg)
 	defer logsCores.Sync()
 	hlog.SetLogger(logsCores)
-	zap.L().Info("halo dunia", zap.String("nama", "lintang"))
 
 	if err != nil {
 		hlog.Fatalf("Config error: %s", err)
@@ -47,29 +45,24 @@ func main() {
 
 	cc, err := grpc.NewClient(cfg.GRPC.MonitorURL+"?wait=30s", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		zap.L().Fatal("Newclient gprc (main)", zap.Error(err) )
+		zap.L().Fatal("Newclient gprc (main)", zap.Error(err))
 	}
 	// validation error custom
 	customValidationErr := CreateCustomValidationError()
 
-	h := server.Default(server.WithValidateConfig(customValidationErr))
+	
+
+	h := server.Default(server.WithValidateConfig(customValidationErr), server.WithExitWaitTime(4*time.Second))
 
 	h.Use(AccessLog())
 
+	var callback []route.CtxCallback
+	callback = append(callback, rmq.Close, pg.ClosePostgres)
+	h.Engine.OnShutdown = append(h.Engine.OnShutdown, callback...) /// graceful shutdown
 	cSvc := di.InitContainerService(pg, rmq, cfg, cc)
-	InstallCURLInDkron()
-
 
 	router.MyRouter(h, cSvc)
 	h.Spin()
-	// gracefulShutdown
-	h.SetCustomSignalWaiter(func(err chan error) error {
-		db.ClosePostgres(pg.Pool)
-		rmq.Close()
-		cc.Close()
-		return nil
-	})
-
 
 }
 
@@ -197,7 +190,7 @@ func AccessLog() app.HandlerFunc {
 	}
 }
 
-// // bawaan hertz
+// bawaan hertz
 // func AccessLog() app.HandlerFunc {
 // 	return func(c context.Context, ctx *app.RequestContext) {
 // 		start := time.Now()

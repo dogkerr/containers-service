@@ -36,6 +36,7 @@ type ContainerService interface {
 	ScheduleCreate(ctx context.Context, userID string, scheduledTime uint64, timeFormat domain.TimeFormat, action domain.ContainerAction, ctr *domain.Container) error
 	CreateNewServiceAndUpload(ctx context.Context, d *domain.Container, imageFile *multipart.FileHeader,
 		imageName string) (string, time.Time, *domain.ContainerLifecycle, error)
+	GetUserContainersLoadTest(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
 }
 
 type ContainerHandler struct {
@@ -73,6 +74,9 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/scheduler/:id/terminate", handler.ScheduleTerminate)
 			// ctrH.POST("/scheduler/:id/create", handler. ))
 
+			// load test
+			ctrH.GET("/loadtest", append(middleware.Protected(), handler.GetUserContainersLoadTest)...)
+
 		}
 	}
 }
@@ -83,14 +87,14 @@ type ResponseError struct {
 }
 
 type createServiceReq struct {
-	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_ dan tidak boleh ada spasi'"`
-	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
-	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
-	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
+	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
+	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$'); msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'"`
+	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
+	Env         []string          `json:"env" vd:" range($, regexp('^([A-Z0-9_]*)=([A-Z0-9_]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource   `json:"limit,required; msg:'resource limit harus anda isi '"`
 	Reservation domain.Resource   `json:"reservation,omitempty" `
 	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
-	Endpoint    []domain.Endpoint `json:"endpoint,required; msg:'endpoint wajib diisi'"`
+	Endpoint    []domain.Endpoint `json:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'"`
 }
 
 type createContainerResp struct {
@@ -164,16 +168,16 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 }
 
 type createServiceAndBuildImageReq struct {
-	Name string `form:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_ dan tidak boleh ada spasi'"`
+	Name string `form:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
 	// Image       string            `form:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
-	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
-	Env         []string              `form:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
+	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
+	Env         []string              `json:"env" vd:" range($, regexp('^([A-Z0-9_]*)=([A-Z0-9_]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource       `form:"limit,required; msg:'resource limit harus anda isi '"`
 	Reservation domain.Resource       `form:"reservation,omitempty" `
 	Replica     int64                 `form:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
-	Endpoint    []domain.Endpoint     `form:"endpoint,required" vd:"msg:'endpoint wajib diisi'""`
+	Endpoint    []domain.Endpoint     `form:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'""`
 	ImageTar    *multipart.FileHeader `form:"image,required" vd:"msg:'endpoint wajib diisi'"`
-	ImageName   string                `form:"imageName,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
+	ImageName   string                `form:"imageName,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$');  msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'"`
 }
 
 func (m *ContainerHandler) CreateContainerAndBuildImage(ctx context.Context, c *app.RequestContext) {
@@ -264,7 +268,7 @@ func (m *ContainerHandler) GetUsersContainer(ctx context.Context, c *app.Request
 }
 
 type getContainerReq struct {
-	ID string `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
+	ID string `path:"id" vd:"len($)<400 regexp('^[\\w\\-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
 }
 
 type getContainerRes struct {
@@ -418,7 +422,7 @@ type HelloReq struct {
 }
 
 type scheduledActionReq struct {
-	ID     string `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
+	ID     string `path:"id" vd:"len($)<400 regexp('^[\\w\\-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
 	UserID string `json:"user_id"`
 }
 
@@ -457,15 +461,15 @@ func (m *ContainerHandler) ScheduledStart(ctx context.Context, c *app.RequestCon
 }
 
 type scheduleCreateServiceReq struct {
-	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -/_ dan tidak boleh ada spasi'"`
-	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:'"`
-	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) || !$; msg:'label haruslah kurang dari 50 '"`
-	Env         []string          `json:"env,omitempty" vd:"range($, regexp('^[A-Z0-9_=]*$')) || !$; msg:'env harus alphanumeric atau symbol _'"`
+	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
+	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$'); msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'"`
+	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
+	Env         []string          `json:"env" vd:" range($, regexp('^([A-Z0-9_]*)=([A-Z0-9_]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource   `json:"limit,required" vd:" msg:'resource limit harus anda isi '" `
 	Reservation domain.Resource   `json:"reservation,omitempty" `
 	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
-	Endpoint    []domain.Endpoint `json:"endpoint,required" vd:"msg:'endpoint wajib diisi'"`
-	UserID      string            `json:"user_id" vd:"len($)<100 && regexp('^[a-zA-Z0-9_-]*$'); msg:'user_id harus alphanumeric dan simbol -/_'"`
+	Endpoint    []domain.Endpoint `json:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'"`
+	UserID      string            `json:"user_id" vd:"len($)<100 && regexp('^[\\w\\-]*$'); msg:'user_id harus alphanumeric dan simbol -/_'"`
 }
 
 func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestContext) {
@@ -526,7 +530,7 @@ func (m *ContainerHandler) ScheduleTerminate(ctx context.Context, c *app.Request
 }
 
 type scheduleContainerReq struct {
-	ID            string                 `path:"id" vd:"len($)<400 regexp('^[a-zA-Z0-9-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
+	ID            string                 `path:"id" vd:"len($)<400 regexp('^[\\w\\-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
 	Action        domain.ContainerAction `json:"action" vd:"in($ , 'START', 'STOP', 'TERMINATE'); msg:'action harus dari pilihan berikut=START, STOPPED, TERMINATE '"`
 	ScheduledTIme uint64                 `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"`
 	TimeFormat    domain.TimeFormat      `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"`
@@ -592,6 +596,23 @@ func (m *ContainerHandler) CreateScheduledCreate(ctx context.Context, c *app.Req
 		return
 	}
 	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s scheduled in %d %s", req.Action, req.ScheduledTIme, req.TimeFormat)})
+}
+
+func (m *ContainerHandler) GetUserContainersLoadTest(ctx context.Context, c *app.RequestContext) {
+	userId, _ := c.Get("userID")
+
+	var req Pagination
+	err := c.BindAndValidate(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ResponseError{Message: err.Error()})
+		return
+	}
+	resp, err := m.svc.GetUserContainers(ctx, userId.(string), req.Offset, req.Limit)
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, getUserContainersResp{resp})
 }
 
 func (m *ContainerHandler) SayHello(ctx context.Context, c *app.RequestContext) {

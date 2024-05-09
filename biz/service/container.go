@@ -188,6 +188,18 @@ func (s *ContainerService) GetUserContainers(ctx context.Context, userID string,
 	return ctrsDocker, nil
 }
 
+// GetUserContainersLoadTest -.
+// @Description ini cuma buat coba load testing doang hehe
+func (s *ContainerService) GetUserContainersLoadTest(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error) {
+	// get all user container di repo
+	userCtrsDb, err := s.containerRepo.GetAllUserContainers(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	
+	return userCtrsDb, nil
+}
+
 // GetContainer -.
 // @Description get container by id, tapi ini yg masih run sebagai swarm service doang jadi masih salah
 func (s *ContainerService) GetContainer(ctx context.Context, ctrID string, userID string) (*domain.Container, error) {

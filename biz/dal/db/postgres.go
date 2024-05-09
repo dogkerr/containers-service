@@ -53,7 +53,7 @@ func NewPostgres(cfg *config.Config) *Postgres {
 	return &Postgres{Pool: pool}
 }
 
-func ClosePostgres(pg *pgxpool.Pool) {
+func (pg *Postgres) ClosePostgres(ctx context.Context) {
 	zap.L().Info("closing postgres gracefully")
-	pg.Close()
+	pg.Pool.Close()
 }

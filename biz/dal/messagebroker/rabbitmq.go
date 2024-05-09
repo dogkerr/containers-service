@@ -1,6 +1,7 @@
 package messagebroker
 
 import (
+	"context"
 	"dogker/lintang/container-service/config"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
@@ -53,7 +54,7 @@ func NewRabbitMQ(cfg *config.Config) *RabbitMQ {
 
 }
 
-func (r *RabbitMQ) Close() error {
+func (r *RabbitMQ) Close(ctx context.Context) {
 	zap.L().Info("closing rabbitmq gracefully")
-	return r.Connection.Close()
+	r.Connection.Close()
 }

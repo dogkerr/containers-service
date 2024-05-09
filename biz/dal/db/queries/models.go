@@ -125,6 +125,7 @@ type ContainerMetric struct {
 	Memory         float64
 	NetworkIngress float64
 	NetworkEgress  float64
+	CreatedTime    pgtype.Timestamptz
 }
 
 type Dashboard struct {
