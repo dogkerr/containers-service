@@ -90,7 +90,7 @@ type createServiceReq struct {
 	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
 	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$'); msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'"`
 	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
-	Env         []string          `json:"env" vd:" range($, regexp('^([A-Z0-9_]*)=([A-Z0-9_]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
+	Env         []string          `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource   `json:"limit,required; msg:'resource limit harus anda isi '"`
 	Reservation domain.Resource   `json:"reservation,omitempty" `
 	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
@@ -171,7 +171,7 @@ type createServiceAndBuildImageReq struct {
 	Name string `form:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
 	// Image       string            `form:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
 	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
-	Env         []string              `json:"env" vd:" range($, regexp('^([A-Z0-9_]*)=([A-Z0-9_]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
+	Env    []string          `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource       `form:"limit,required; msg:'resource limit harus anda isi '"`
 	Reservation domain.Resource       `form:"reservation,omitempty" `
 	Replica     int64                 `form:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
@@ -464,7 +464,7 @@ type scheduleCreateServiceReq struct {
 	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
 	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$'); msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'"`
 	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
-	Env         []string          `json:"env" vd:" range($, regexp('^([A-Z0-9_]*)=([A-Z0-9_]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
+	Env         []string          `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource   `json:"limit,required" vd:" msg:'resource limit harus anda isi '" `
 	Reservation domain.Resource   `json:"reservation,omitempty" `
 	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
