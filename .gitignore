@@ -38,3 +38,7 @@ dumped_hertz_remote_config.json
 logs/
 pb/
 output/
+
+bfg-1.14.0.jar
+..bfg-report
+

@@ -7,7 +7,7 @@
 
 #### Cara pake hertz & kitex framework
 
-Hertz:
+Hertz
 ```
 1. sama kaya gin di golang_clean_template ku , tdk perlu generate code pakai hz
 ```
