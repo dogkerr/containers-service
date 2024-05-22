@@ -29,6 +29,19 @@ func InitContainerService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *con
 	return containerService
 }
 
+func InitContainerGRPCService(pg *db.Postgres, rmq *messagebroker.RabbitMQ, cfg *config.Config, cc *grpc.ClientConn) *service.ContainerGRPCServiceImpl {
+	containerRepository := db.NewContainerRepo(pg)
+	dockerEngineAPI := webapi.CreateNewDockerEngineAPI(cfg)
+	dkronAPI := webapi.CreateDkronAPI(cfg)
+	monitorClient := webapi.NewMonitorClient(cc)
+	minioAPI := webapi.NewMinioAPI(cfg)
+	containerGRPCServiceImpl := service.NewContainerGRPCService(containerRepository, dockerEngineAPI, dkronAPI, monitorClient, minioAPI)
+	return containerGRPCServiceImpl
+}
+
 // wire.go:
 
 var ProviderSet wire.ProviderSet = wire.NewSet(service.NewContainerService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, webapi.CreateDkronAPI, webapi.NewMonitorClient, webapi.NewMinioAPI, wire.Bind(new(router.ContainerService), new(*service.ContainerService)), wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)), wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)), wire.Bind(new(service.MonitorClient), new(*webapi.MonitorClient)), wire.Bind(new(service.MinioAPI), new(*webapi.MinioAPI)))
+
+// kitex
+var ProviderSetGRPC wire.ProviderSet = wire.NewSet(service.NewContainerGRPCService, webapi.CreateNewDockerEngineAPI, db.NewContainerRepo, webapi.CreateDkronAPI, webapi.NewMonitorClient, webapi.NewMinioAPI, wire.Bind(new(service.ContainerRepository), new(*db.ContainerRepository)), wire.Bind(new(service.DockerEngineAPI), new(*webapi.DockerEngineAPI)), wire.Bind(new(service.DkronAPI), new(*webapi.DkronAPI)), wire.Bind(new(service.MonitorClient), new(*webapi.MonitorClient)), wire.Bind(new(service.MinioAPI), new(*webapi.MinioAPI)))

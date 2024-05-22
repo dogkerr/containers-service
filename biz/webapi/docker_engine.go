@@ -136,7 +136,7 @@ type dataServiceFromDB struct {
 	ID           string
 }
 
-func (d *DockerEngineAPI) IsPublicPortAndNameAvailable(ctx context.Context, wantedPorts []uint32, name string) error {
+func (d *DockerEngineAPI) IsPublicPortAndNameAvailable(ctx context.Context, wantedPorts []uint32, name string, ctrID string) error {
 
 	resp, err := d.Cli.ServiceList(ctx, types.ServiceListOptions{})
 	if err != nil {
@@ -151,21 +151,23 @@ func (d *DockerEngineAPI) IsPublicPortAndNameAvailable(ctx context.Context, want
 		}
 	}
 
-	for _, allocatedPort := range wantedPorts {
-		if _, ok := allocatedPortsSet[allocatedPort]; ok {
-			return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already allocated by other user", allocatedPort))
+	for _, wantedPort := range wantedPorts {
+		if _, ok := allocatedPortsSet[wantedPort]; ok {
+			return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already allocated by other user", wantedPort))
 		}
 	}
 
-	serviceNameSet := make(map[string]struct{})
+	// check apakah container name yang diinginkan user available
 	for _, svc := range resp {
-		serviceNameSet[svc.Spec.Name] = struct{}{}
+		if name == svc.Spec.Name && ctrID != "" && svc.ID != ctrID {
+			// buat update container (id container udah ada)
+			return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container name %s already allocated by other user", name))
+		} else if ctrID == "" && name == svc.Spec.Name {
+			// buat create container (id container belum ada)
+			return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container name %s already allocated by other user", name))
+		}
 	}
 
-	// check apakah container name yang diinginkan user available
-	if _, ok := serviceNameSet[name]; ok {
-		return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container name %s already allocated by other user", serviceNameSet))
-	}
 
 	return nil
 }
@@ -562,6 +564,11 @@ func (d *DockerEngineAPI) Update(ctx context.Context, ctrID string, c *domain.Co
 		})
 	}
 
+	// tambahin label user_id
+	if c.Labels == nil {
+		c.Labels = make(map[string]string)
+	}
+	c.Labels["user_id"] = userID
 	// update data container di docker
 	_, err = d.Cli.ServiceUpdate(ctx, ctrID, swarm.Version{Index: svc.Version.Index}, swarm.ServiceSpec{
 		TaskTemplate: swarm.TaskSpec{
@@ -681,9 +688,9 @@ func (d *DockerEngineAPI) BuildImageFromFile(ctx context.Context, file *os.File,
 	imageResBuild, err := d.Cli.ImageBuild(ctx, file, types.ImageBuildOptions{
 		Tags: []string{imageName},
 	})
-	if err !=nil {
+	if err != nil {
 		zap.L().Error("ImageBuild dockerCLI", zap.Error(err))
-		return types.ImageBuildResponse{},  domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+		return types.ImageBuildResponse{}, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 	}
 	io.Copy(os.Stdout, imageResBuild.Body)
 	defer imageResBuild.Body.Close()

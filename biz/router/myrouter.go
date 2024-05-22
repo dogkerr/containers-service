@@ -37,6 +37,7 @@ type ContainerService interface {
 	CreateNewServiceAndUpload(ctx context.Context, d *domain.Container, imageFile *multipart.FileHeader,
 		imageName string) (string, time.Time, *domain.ContainerLifecycle, error)
 	GetUserContainersLoadTest(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
+	TerminatedAccidentally(ctx context.Context, serviceIDs []string) error
 }
 
 type ContainerHandler struct {
@@ -72,6 +73,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/scheduler/:id/start", handler.ScheduledStart)
 			ctrH.POST("/scheduler/create", handler.ScheduleCreate)
 			ctrH.POST("/scheduler/:id/terminate", handler.ScheduleTerminate)
+			// ctrH.POST("/cron/service/terminatedAccidentally", handler.terminatedAccidentally)
 			// ctrH.POST("/scheduler/:id/create", handler. ))
 
 			// load test
@@ -158,7 +160,7 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 			Env:                 req.Env,
 			Endpoint:            dEndpoint,
 			UserID:              userId.(string),
-			Status:              domain.ContainerStatusRUN,
+			Status:              domain.ServiceRun,
 			ContainerPort:       int(req.Endpoint[0].TargetPort),
 			PublicPort:          int(req.Endpoint[0].PublishedPort),
 			ContainerLifecycles: []domain.ContainerLifecycle{*ctrLife},
@@ -171,7 +173,7 @@ type createServiceAndBuildImageReq struct {
 	Name string `form:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
 	// Image       string            `form:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
 	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
-	Env    []string          `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
+	Env         []string              `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource       `form:"limit,required; msg:'resource limit harus anda isi '"`
 	Reservation domain.Resource       `form:"reservation,omitempty" `
 	Replica     int64                 `form:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
@@ -231,7 +233,7 @@ func (m *ContainerHandler) CreateContainerAndBuildImage(ctx context.Context, c *
 			Env:                 req.Env,
 			Endpoint:            dEndpoint,
 			UserID:              userId.(string),
-			Status:              domain.ContainerStatusRUN,
+			Status:              domain.ServiceRun,
 			ContainerPort:       int(req.Endpoint[0].TargetPort),
 			PublicPort:          int(req.Endpoint[0].PublishedPort),
 			ContainerLifecycles: []domain.ContainerLifecycle{*ctrLife},
@@ -614,6 +616,31 @@ func (m *ContainerHandler) GetUserContainersLoadTest(ctx context.Context, c *app
 	}
 	c.JSON(http.StatusOK, getUserContainersResp{resp})
 }
+
+type cronTerminatedAccidentallyReq struct {
+	ServiceIDs []string `json:"service_ids"`
+}
+
+// // TerminatedAccidentally
+// // @Desc ini dipanggil sama monitorservice setiap 4 detik ketika ada container mati > 2 detik
+// // terus metrics dari ctr mati tsb di get dari monitor-service, terus metricsnya bakal diinsert
+// // set container status terminated && container lifecycle stopped
+// // kalau sebelumnya terminated di ctrnya, berarti gak usah di insert metricsnya lagi karena emang pernah diinsert pas deleteContainer
+// // ke tabel container metrics , jadi container metrics itu nyimpen metrics container yang udah mati
+// // karena kalo container mati
+// func (m *ContainerHandler) TerminatedAccidentally(ctx context.Context, c *app.RequestContext) {
+// 	var req cronTerminatedAccidentallyReq
+// 	err := c.BindAndValidate(&req)
+// 	if err != nil {
+// 		c.String(consts.StatusBadRequest, err.Error())
+// 		return
+// 	}
+// 	if len(req.ServiceIDs) != 0 {
+
+// 		// kalau emang ada 
+// 	}
+// 	c.JSON(http.StatusOK, "ok")
+// }
 
 func (m *ContainerHandler) SayHello(ctx context.Context, c *app.RequestContext) {
 	var req HelloReq

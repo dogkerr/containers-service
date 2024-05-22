@@ -19,6 +19,15 @@ SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_po
 	WHERE c.service_id=$1
 	LIMIT $2 OFFSET $3;
 
+
+-- name: GetContainersByIDs :many
+SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_port,c.created_time,
+	c.service_id,c.terminated_time
+	FROM containers c 
+	WHERE c.service_id in ($1::uuid[]);
+
+
+
 -- name: InsertContainer :one
 INSERT INTO containers (
 	user_id, image, status, name, container_port, public_port, terminated_time, created_time, service_id
@@ -26,6 +35,12 @@ INSERT INTO containers (
 	$1, $2, $3, $4, $5, $6, $7, $8, $9
 ) RETURNING *;
 
+-- name: BatchInsertContainerMetrics :copyfrom
+INSERT INTO container_metrics(
+	container_id, cpus, memory, network_ingress, network_egress
+) VALUES (
+	$1, $2, $3, $4, $5
+);
 
 -- name: UpdateContainer :exec
 UPDATE containers
@@ -39,6 +54,18 @@ SET
 	created_time=$8
 WHERE service_id=$1;
 
+
+-- name: BatchUpdateStatusContainer :exec
+UPDATE containers
+SET 
+	status=$2
+WHERE container_id IN  ($1::uuid[]);
+
+-- name: BatchUpdateStatusContainerLifecycle :exec
+UPDATE container_lifecycles
+SET 
+	status=$2
+WHERE container_id IN  ($1::uuid[]);
 
 -- name: DeleteContainer :exec
 DELETE FROM containers
@@ -72,6 +99,7 @@ UPDATE container_lifecycles
 SET 
 	replica=$2
 WHERE id=$1;
+
 
 
 

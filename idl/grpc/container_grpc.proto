@@ -11,6 +11,20 @@ message HelloReq {
 }
 
 
-service ContainerService { 
-    rpc Hello(HelloReq) returns (HelloResp);
+
+message ContainerTerminatedAccidentallyReq {
+    repeated string serviceIDs = 1;
 }
+
+message ContainerTerminatedAccidentallyRes {
+    string message = 1;
+}
+
+
+
+service ContainerGRPCService { 
+    rpc Hello(HelloReq) returns (HelloResp);
+    rpc ContainerTerminatedAccidentally(ContainerTerminatedAccidentallyReq) returns (ContainerTerminatedAccidentallyRes);
+}
+
+

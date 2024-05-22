@@ -12,6 +12,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BatchInsertContainerMetricsParams struct {
+	ContainerID    uuid.UUID
+	Cpus           float64
+	Memory         float64
+	NetworkIngress float64
+	NetworkEgress  float64
+}
+
+const batchUpdateStatusContainer = `-- name: BatchUpdateStatusContainer :exec
+UPDATE containers
+SET 
+	status=$2
+WHERE container_id IN  ($1::uuid[])
+`
+
+type BatchUpdateStatusContainerParams struct {
+	Column1 []uuid.UUID
+	Status  ContainerStatus
+}
+
+func (q *Queries) BatchUpdateStatusContainer(ctx context.Context, arg BatchUpdateStatusContainerParams) error {
+	_, err := q.db.Exec(ctx, batchUpdateStatusContainer, arg.Column1, arg.Status)
+	return err
+}
+
+const batchUpdateStatusContainerLifecycle = `-- name: BatchUpdateStatusContainerLifecycle :exec
+UPDATE container_lifecycles
+SET 
+	status=$2
+WHERE container_id IN  ($1::uuid[])
+`
+
+type BatchUpdateStatusContainerLifecycleParams struct {
+	Column1 []uuid.UUID
+	Status  ContainerStatus
+}
+
+func (q *Queries) BatchUpdateStatusContainerLifecycle(ctx context.Context, arg BatchUpdateStatusContainerLifecycleParams) error {
+	_, err := q.db.Exec(ctx, batchUpdateStatusContainerLifecycle, arg.Column1, arg.Status)
+	return err
+}
+
 const deleteContainer = `-- name: DeleteContainer :exec
 DELETE FROM containers
 WHERE service_id=$1
@@ -221,6 +263,57 @@ func (q *Queries) GetContainerWithPagination(ctx context.Context, arg GetContain
 			&i.Lifecyclestoptime,
 			&i.Lifecyclereplica,
 			&i.Lifecyclestatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getContainersByIDs = `-- name: GetContainersByIDs :many
+SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_port,c.created_time,
+	c.service_id,c.terminated_time
+	FROM containers c 
+	WHERE c.service_id in ($1::uuid[])
+`
+
+type GetContainersByIDsRow struct {
+	ID             uuid.UUID
+	UserID         uuid.UUID
+	Image          string
+	Status         ContainerStatus
+	Name           string
+	ContainerPort  int32
+	PublicPort     pgtype.Int4
+	CreatedTime    pgtype.Timestamptz
+	ServiceID      string
+	TerminatedTime pgtype.Timestamptz
+}
+
+func (q *Queries) GetContainersByIDs(ctx context.Context, dollar_1 []uuid.UUID) ([]GetContainersByIDsRow, error) {
+	rows, err := q.db.Query(ctx, getContainersByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetContainersByIDsRow
+	for rows.Next() {
+		var i GetContainersByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Image,
+			&i.Status,
+			&i.Name,
+			&i.ContainerPort,
+			&i.PublicPort,
+			&i.CreatedTime,
+			&i.ServiceID,
+			&i.TerminatedTime,
 		); err != nil {
 			return nil, err
 		}

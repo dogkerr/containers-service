@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"dogker/lintang/container-service/biz/dal/db/queries"
 	"dogker/lintang/container-service/biz/domain"
+	"fmt"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/gofrs/uuid"
 	googleuuid "github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"
 )
@@ -31,7 +33,7 @@ func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID s
 	}
 	ctrs, err := q.GetAllUserContainers(ctx, googleuuid.UUID(uid))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			hlog.Debug("container milik userId: "+userID+"tidak ada", err)
 			return nil, domain.WrapErrorf(err, domain.ErrNotFound, "container milik userId: "+userID+"tidak ada")
 		}
@@ -62,7 +64,7 @@ func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID s
 				ID:                  ctr.ID.String(),
 				UserID:              ctr.UserID.String(),
 				Image:               ctr.Image,
-				Status:              domain.ContainerStatus(ctr.Status),
+				Status:              domain.ServiceStatus(ctr.Status),
 				Name:                ctr.Name,
 				ContainerPort:       int(ctr.ContainerPort),
 				PublicPort:          int(publicPort),
@@ -119,7 +121,7 @@ func (r *ContainerRepository) Get(ctx context.Context, serviceID string) (*domai
 				ID:                  ctr.ID.String(),
 				UserID:              ctr.UserID.String(),
 				Image:               ctr.Image,
-				Status:              domain.ContainerStatus(ctr.Status),
+				Status:              domain.ServiceStatus(ctr.Status),
 				Name:                ctr.Name,
 				ContainerPort:       int(ctr.ContainerPort),
 				PublicPort:          publicPort,
@@ -158,6 +160,106 @@ func (r *ContainerRepository) Insert(ctx context.Context, c *domain.Container) (
 	})
 	c.ID = ctr.ID.String()
 	return c, nil
+}
+
+func (r *ContainerRepository) GetContainersDetail(ctx context.Context, serviceIDs []string) ([]*domain.Container, error) {
+	q := queries.New(r.db.Pool)
+	var serviceIDsUUID []googleuuid.UUID
+	for _, sID := range serviceIDs {
+		sUUID, err := uuid.FromString(sID)
+		if err != nil {
+			zap.L().Error(fmt.Sprintf(" uuid.FromString(sID)"), zap.String("serviceID", sID))
+			return []*domain.Container{}, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+		}
+		serviceIDsUUID = append(serviceIDsUUID, googleuuid.UUID(sUUID))
+	}
+	ctrs, err := q.GetContainersByIDs(ctx, serviceIDsUUID)
+	if err != nil {
+		zap.L().Error(fmt.Sprintf("containers not found"), zap.Strings("serviceID", serviceIDs))
+		return []*domain.Container{}, domain.WrapErrorf(err, domain.ErrNotFound, fmt.Sprintf(" all containers dengena serviceIDs not found"))
+	}
+
+	var res []*domain.Container
+	for _, ctr := range ctrs {
+
+		res = append(res, &domain.Container{
+			UserID:         ctr.UserID.String(),
+			Status:         domain.ServiceStatus(ctr.Status),
+			Name:           ctr.Name,
+			ContainerPort:  int(ctr.ContainerPort),
+			PublicPort:     int(ctr.PublicPort.Int32),
+			CreatedTime:    ctr.CreatedTime.Time,
+			TerminatedTime: ctr.TerminatedTime.Time,
+			ServiceID:      ctr.ServiceID,
+		})
+	}
+
+	return res, nil
+}
+
+func (r *ContainerRepository) BatchInsertContainerMetrics(ctx context.Context, metr []domain.Metric) error {
+	q := queries.New(r.db.Pool)
+
+	var batchInsertParams []queries.BatchInsertContainerMetricsParams
+	for i := range metr {
+
+		ctrUUID, _ := uuid.FromString(metr[i].ContainerID)
+		batchInsertParams = append(batchInsertParams, queries.BatchInsertContainerMetricsParams{
+			ContainerID:    googleuuid.UUID(ctrUUID),
+			Cpus:           float64(metr[i].CpuUsage),
+			Memory:         float64(metr[i].MemoryUsage),
+			NetworkIngress: float64(metr[i].NetworkIngressUsage),
+			NetworkEgress:  float64(metr[i].NetworkEgressUsage),
+		})
+	}
+	_, err := q.BatchInsertContainerMetrics(ctx, batchInsertParams)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *ContainerRepository) BatchUpdateContainer(ctx context.Context, ctrs []*domain.Container) error {
+	q := queries.New(r.db.Pool)
+
+	var batchUpdateParams queries.BatchUpdateStatusContainerParams
+	var ctrIDsParams []googleuuid.UUID
+
+	for i, _ := range ctrs {
+		ctrUUID, _ := uuid.FromString(ctrs[i].ID)
+		ctrIDsParams = append(ctrIDsParams, googleuuid.UUID(ctrUUID))
+
+	}
+	batchUpdateParams.Column1 = ctrIDsParams
+	batchUpdateParams.Status = queries.ContainerStatus(domain.ServiceTerminated)
+	err := q.BatchUpdateStatusContainer(ctx, batchUpdateParams)
+	if err != nil {
+		zap.L().Error(" q.BatchUpdateStatusContainer (BatchUpdateContainer) (ContainerRepo)")
+		return err
+	}
+	return nil
+}
+
+func (r *ContainerRepository) BatchUpdateContainerLifecycle(ctx context.Context, ctrs []*domain.Container) error {
+	q := queries.New(r.db.Pool)
+
+	var batchUpdateParams queries.BatchUpdateStatusContainerLifecycleParams
+	var ctrIDsParams []googleuuid.UUID
+
+	for i, _ := range ctrs {
+		ctrUUID, _ := uuid.FromString(ctrs[i].ID)
+		ctrIDsParams = append(ctrIDsParams, googleuuid.UUID(ctrUUID))
+	}
+
+	batchUpdateParams.Column1 = ctrIDsParams
+	batchUpdateParams.Status = queries.ContainerStatusSTOP
+	err := q.BatchUpdateStatusContainerLifecycle(ctx, batchUpdateParams)
+	if err != nil {
+		zap.L().Error("q.BatchUpdateStatusContainerLifecycle(ctx, batchUpdateParams) (BatchUpdateContainerLifecycle) (ContainerRepository)")
+		return err  
+	}
+
+	return nil 
 }
 
 func (r *ContainerRepository) Update(ctx context.Context, c *domain.Container) error {
@@ -298,4 +400,8 @@ func (r *ContainerRepository) InsertContainerMetrics(ctx context.Context, metric
 	}
 
 	return nil
+}
+
+func (r *ContainerRepository) GetContainersByIDS(ctx context.Context, serviceIDs string) {
+
 }

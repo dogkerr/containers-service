@@ -24,6 +24,10 @@ type ContainerRepository interface {
 	UpdateLifecycle(ctx context.Context, lifeId string, stopTime time.Time, status domain.ContainerStatus, replica uint32) error
 	UpdateCtrLifeCycleWithoutStopTime(ctx context.Context, replica uint64, lifeID string) error
 	InsertContainerMetrics(ctx context.Context, metrics domain.Metric) error
+	GetContainersDetail(ctx context.Context, serviceIDs []string) ([]*domain.Container, error)
+	BatchInsertContainerMetrics(ctx context.Context, metr []domain.Metric) error
+	BatchUpdateContainer(ctx context.Context, ctrs []*domain.Container) error
+	BatchUpdateContainerLifecycle(ctx context.Context, ctrs []*domain.Container) error
 }
 
 type DockerEngineAPI interface {
@@ -35,7 +39,7 @@ type DockerEngineAPI interface {
 	Delete(ctx context.Context, ctrID string) error
 	Update(ctx context.Context, ctrID string, c *domain.Container, userID string) (err error)
 	ScaleX(ctx context.Context, ctrID string, replica uint64, userID string) error
-	IsPublicPortAndNameAvailable(ctx context.Context, wantedPorts []uint32, name string) error
+	IsPublicPortAndNameAvailable(ctx context.Context, wantedPorts []uint32, name string, ctrID string) error
 	BuildImageFromFile(ctx context.Context, file *os.File, imageName string) (types.ImageBuildResponse, error)
 }
 
@@ -196,7 +200,7 @@ func (s *ContainerService) GetUserContainersLoadTest(ctx context.Context, userID
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return userCtrsDb, nil
 }
 
@@ -255,7 +259,7 @@ func (s *ContainerService) StartContainer(ctx context.Context, ctrID string, use
 	}
 
 	// update container status to run
-	ctrDB.Status = domain.ContainerStatusRUN
+	ctrDB.Status = domain.ServiceRun
 	err = s.containerRepo.Update(ctx, ctrDB)
 	if err != nil {
 		return nil, err
@@ -309,7 +313,7 @@ func (s *ContainerService) StopContainer(ctx context.Context, ctrID string, user
 	}
 
 	// update row di table container jd stop statusnya
-	ctrDB.Status = domain.ContainerStatusSTOPPED
+	ctrDB.Status = domain.ServiceStopped
 	err = s.containerRepo.Update(ctx, ctrDB)
 	if err != nil {
 		return err
@@ -357,7 +361,7 @@ func (s *ContainerService) DeleteContainer(ctx context.Context, ctrID string, us
 
 	// update terminatedTime di tabel containers
 	ctrDB.TerminatedTime = time.Now()
-	ctrDB.Status = domain.ContainerStatusSTOPPED
+	ctrDB.Status = domain.ServiceTerminated
 	err = s.containerRepo.Update(ctx, ctrDB)
 	if err != nil {
 		return err
@@ -371,9 +375,6 @@ func (s *ContainerService) DeleteContainer(ctx context.Context, ctrID string, us
 		return err
 	}
 
-	// update status container jd stop di tabel container
-	ctrDB.Status = domain.ContainerStatusSTOPPED
-	err = s.containerRepo.Update(ctx, ctrDB)
 	return nil
 }
 
@@ -389,9 +390,15 @@ func (s *ContainerService) UpdateContainer(ctx context.Context, d *domain.Contai
 		return "", domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container %s bukan milik anda", ctrID))
 	}
 
+	// buat dapetin endpoint(port) container sebelumnya dari docker (bisa  pas status nya stopped/run)
+	ctrDocker, err := s.dockerAPI.Get(ctx, ctrID, ctrDB)
+	if err != nil {
+		return "", err
+	}
+
 	// cek apakah public port dan nama container baru yang diinginkan user tersedia
 	var endpointDBs map[uint64]struct{} = make(map[uint64]struct{})
-	for _, endpointDB := range ctrDB.Endpoint {
+	for _, endpointDB := range ctrDocker.Endpoint {
 		endpointDBs[endpointDB.PublishedPort] = struct{}{}
 	}
 
@@ -402,7 +409,7 @@ func (s *ContainerService) UpdateContainer(ctx context.Context, d *domain.Contai
 		}
 	}
 
-	err = s.dockerAPI.IsPublicPortAndNameAvailable(ctx, wantedPorts, d.Name)
+	err = s.dockerAPI.IsPublicPortAndNameAvailable(ctx, wantedPorts, d.Name, ctrDocker.ServiceID)
 	if err != nil {
 		return "", err
 	}
@@ -512,7 +519,7 @@ func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, sc
 	for _, endpoint := range ctr.Endpoint {
 		wantedPorts = append(wantedPorts, uint32(endpoint.PublishedPort))
 	}
-	err := s.dockerAPI.IsPublicPortAndNameAvailable(ctx, wantedPorts, ctr.Name)
+	err := s.dockerAPI.IsPublicPortAndNameAvailable(ctx, wantedPorts, ctr.Name, "")
 	if err != nil {
 		return err
 	}
@@ -521,6 +528,65 @@ func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, sc
 	err = s.dkronAPI.AddCreateJob(ctx, scheduledTimeSecond, action, userID, ctr)
 	if err != nil {
 		zap.L().Error("AddCreateJob dkron", zap.String("ctrID", ctr.ID), zap.String("userID", userID))
+		return err
+	}
+	return nil
+}
+
+// TerminatedAccidentally
+// @Desc ini dipanggil  setiap 4 detik ketika ada container mati > 2 detik
+// terus metrics dari ctr mati tsb di get dari monitor-service, terus metricsnya bakal diinsert
+// set container status terminated && container lifecycle stopped
+// kalau sebelumnya terminated di ctrnya, berarti gak usah di insert metricsnya lagi karena emang pernah diinsert pas deleteContainer
+// ke tabel container metrics , jadi container metrics itu nyimpen metrics container yang udah mati
+// karena kalo container mati
+func (s *ContainerService) TerminatedAccidentally(ctx context.Context, serviceIDs []string) error {
+	// get containers detail dari list of service Ids
+	ctrsDB, err := s.containerRepo.GetContainersDetail(ctx, serviceIDs)
+	if err != nil {
+		zap.L().Error("s.containerRepo.GetContainersDetail(ctx, serviceIDs) (TerminatedAccidentally) (ContainerService)", zap.Strings("serviceIDs", serviceIDs))
+		return err
+	}
+
+	//  only filter container yang sebelumnya gak terminatted, karena yg sebelumnya terminated di db udah ada metrics nya di tabel metrics && status di tabel conatainer == terminated && status di tabel lifecycle == stopped
+	for i := range ctrsDB {
+		if ctrsDB[i].Status == domain.ServiceTerminated {
+			// hapus cotnainer yang sebelumnya statusnya terminated, dari ctrsDB
+			// delete inplace arraynya
+			ctrsDB[i] = ctrsDB[len(ctrsDB)-1]
+			ctrsDB = ctrsDB[:len(ctrsDB)-1]
+		}
+	}
+
+	// get metrics dari setiap container dari monitor service (loop O(n))
+	var ctrMetrics []domain.Metric
+	for i, _ := range ctrsDB {
+		metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrsDB[i].ID, ctrsDB[i].UserID, ctrsDB[i].CreatedTime)
+		if err != nil {
+			return err
+		}
+		ctrMetrics = append(ctrMetrics, *metric)
+
+	}
+
+	// batch insert container metrics untuk setiap container tadi
+	err = s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics)
+	if err != nil {
+		zap.L().Error("s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics) (TerminatedAccidentally) (ContainerService)")
+		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+	}
+
+	//  update batch  semua container tadi,  jadi terminated di tabel container
+	err = s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)
+	if err != nil {
+		zap.L().Error("s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)")
+		return err
+	}
+
+	// update lifecycle semua container tadi jadi stopped karena emang mati
+	err = s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)
+	if err != nil {
+		zap.L().Error("s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)")
 		return err
 	}
 	return nil

@@ -15,6 +15,15 @@ import (
 // 	return [...]string{"RUN", "STOPPED"}[s-1]
 // }
 
+type ServiceStatus string
+
+const (
+	ServiceCreated   ServiceStatus = "CREATED"
+	ServiceRun       ServiceStatus = "RUN"
+	ServiceStopped   ServiceStatus = "STOPPED"
+	ServiceTerminated ServiceStatus = "TERMINATED"
+)
+
 type ContainerStatus string
 
 const (
@@ -35,7 +44,7 @@ type Container struct {
 	// ini cuma id row di table container
 	ID                  string               `json:"id"`
 	UserID              string               `json:"user_id"`
-	Status              ContainerStatus      `json:"status"`
+	Status              ServiceStatus        `json:"status"`
 	Name                string               `json:"name"`
 	ContainerPort       int                  `json:"container_port"`
 	PublicPort          int                  `json:"public_port"`
@@ -43,14 +52,15 @@ type Container struct {
 	TerminatedTime      time.Time            `json:"terminated_time"`
 	ContainerLifecycles []ContainerLifecycle `json:"all_container_lifecycles"`
 	// id dari containernya/servicenya
-	ServiceID string `json:"serviceId"`
+	ServiceID string `json:"service_id"`
+	Image     string `json:"image"`
 
 	/// field dibawah ini cuma dari docker engine && bukan dari db
+	// tapi kalau container udah diterminate gak bisa fetch field dibawah ini
 	Labels      map[string]string `json:"labels"`
 	Replica     uint64            `json:"replica"`
 	Limit       Resource          `json:"limit"`
 	Reservation Resource          `json:"reservation,omitempty"`
-	Image       string            `json:"image"`
 	Env         []string          `json:"env"`
 	Endpoint    []Endpoint        `json:"endpoint"`
 
@@ -91,8 +101,8 @@ const (
 )
 
 var GetContainerAction = map[string]ContainerAction{ //create a map to link enumeration values with string representation
-	"CREATE":  CreateContainer,
-	"START":    StartContainer,
-	"STOP":   StopContainer,
+	"CREATE":    CreateContainer,
+	"START":     StartContainer,
+	"STOP":      StopContainer,
 	"TERMINATE": TerminateContainer,
 }

@@ -39,7 +39,7 @@ func NewPostgres(cfg *config.Config) *Postgres {
 	// db.SetConnMaxLifetime(60 * time.Minute)
 	//  host := "postgres://" + cfg.Postgres.PGURL
 	dbConfig, err := pgxpool.ParseConfig(dsn.String())
-	dbConfig.MaxConns = 50
+	dbConfig.MaxConns = 10
 	dbConfig.MinConns = 2
 	pool, err := pgxpool.NewWithConfig(context.Background(),  dbConfig)
 	if err != nil {

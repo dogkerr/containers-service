@@ -18,7 +18,7 @@ Kitex:
 2. kitex -module dogker/lintang/container-service -I idl/  -type protobuf     --protobuf Mgoogle/protobuf/descriptor.proto=A-Import-Path-In-kitex_gen     idl/grpc/<nama_protobuffile>.proto
 
 3. kitex -type protobuf  -module dogker/lintang/container-service -service hello.service  -I ./idl/  ./idl/grpc/<nama_protofbuffile>.proto
-
+kitex  -module dogker/lintang/container-service  -type protobuf -service containerGRPCService  idl/grpc/container_grpc.proto
 
 import (
 	pb "dogker/lintang/container-service/kitex_gen/container-service/pb/containerservice"
