@@ -225,7 +225,7 @@ func (d *DockerEngineAPI) GetAllUserContainers(ctx context.Context, userID strin
 		}
 		ctrs = append(ctrs, domain.Container{
 			UserID:              userID,
-			Status:              status,
+			Status:              domain.ServiceStatus(status),
 			Name:                v.Spec.Name,
 			ContainerPort:       int(v.Spec.EndpointSpec.Ports[0].TargetPort),
 			PublicPort:          int(v.Spec.EndpointSpec.Ports[0].PublishedPort),
@@ -296,7 +296,7 @@ func (d *DockerEngineAPI) Get(ctx context.Context, ctrID string, cDB *domain.Con
 	ctr := &domain.Container{
 		ID:                  cDB.ID,
 		UserID:              cDB.UserID,
-		Status:              status,
+		Status:              domain.ServiceStatus(status),
 		Name:                resp.Spec.Name,
 		ContainerPort:       int(resp.Spec.EndpointSpec.Ports[0].TargetPort),
 		PublicPort:          int(resp.Spec.EndpointSpec.Ports[0].PublishedPort),
@@ -443,7 +443,7 @@ func (d *DockerEngineAPI) Start(ctx context.Context, ctrID string, lastReplicaFr
 	ctr := &domain.Container{
 		ID:                  cDB.ID,
 		UserID:              cDB.UserID,
-		Status:              status,
+		Status:              domain.ServiceStatus(status),
 		Name:                svc.Spec.Name,
 		ContainerPort:       int(svc.Spec.EndpointSpec.Ports[0].TargetPort),
 		PublicPort:          int(svc.Spec.EndpointSpec.Ports[0].PublishedPort),

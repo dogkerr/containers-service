@@ -56,14 +56,14 @@ func main() {
 
 	// kitex grpc server
 	var opts []kitexServer.Option
-	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf(`127.0.0.1:%s`, cfg.GRPC.URLGrpc)) // grpc address
+	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf(`0.0.0.0:%s`, cfg.GRPC.URLGrpc)) // grpc address
 
 	opts = append(opts, kitexServer.WithMetaHandler(transmeta.ServerHTTP2Handler))
 	opts = append(opts, kitexServer.WithServiceAddr(addr))
 	opts = append(opts, kitexServer.WithExitWaitTime(5 *time.Second))
 	
 	cGrpcSvc := di.InitContainerGRPCService(pg, rmq, cfg, cc)
-	srv := containergrpcservice.NewServer(cGrpcSvc)
+	srv := containergrpcservice.NewServer(cGrpcSvc, opts...)
 	klog.SetLogger(pkg.InitZapKitexLogger(cfg))
 
 
@@ -76,5 +76,9 @@ func main() {
 
 	router.MyRouter(h, cSvc)
 	h.Spin()
-
 }
+
+
+
+
+
