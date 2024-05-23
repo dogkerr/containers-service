@@ -24,7 +24,7 @@ SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_po
 SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_port,c.created_time,
 	c.service_id,c.terminated_time
 	FROM containers c 
-	WHERE c.service_id in ($1::uuid[]);
+	WHERE c.service_id = ANY($1::varchar[]);
 
 
 
@@ -59,13 +59,13 @@ WHERE service_id=$1;
 UPDATE containers
 SET 
 	status=$2
-WHERE container_id IN  ($1::uuid[]);
+WHERE service_id = ANY($1::varchar[]);
 
 -- name: BatchUpdateStatusContainerLifecycle :exec
 UPDATE container_lifecycles
 SET 
 	status=$2
-WHERE container_id IN  ($1::uuid[]);
+WHERE container_id = ANY($1::UUID[]);
 
 -- name: DeleteContainer :exec
 DELETE FROM containers

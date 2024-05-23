@@ -533,64 +533,68 @@ func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, sc
 	return nil
 }
 
-// TerminatedAccidentally
-// @Desc ini dipanggil  setiap 4 detik ketika ada container mati > 2 detik
-// terus metrics dari ctr mati tsb di get dari monitor-service, terus metricsnya bakal diinsert
-// set container status terminated && container lifecycle stopped
+// SwarmServiceDownAccidentally
+// @Desc ini dipanggil  setiap 4 detik ketika ada container stopped > 2 detik
+// terus metrics dari ctr stopped tsb di get dari monitor-service, terus metricsnya bakal diinsert
+// set container status stop && container lifecycle stopped
 // kalau sebelumnya terminated di ctrnya, berarti gak usah di insert metricsnya lagi karena emang pernah diinsert pas deleteContainer
-// ke tabel container metrics , jadi container metrics itu nyimpen metrics container yang udah mati
-// karena kalo container mati
-func (s *ContainerService) TerminatedAccidentally(ctx context.Context, serviceIDs []string) error {
-	// get containers detail dari list of service Ids
-	ctrsDB, err := s.containerRepo.GetContainersDetail(ctx, serviceIDs)
-	if err != nil {
-		zap.L().Error("s.containerRepo.GetContainersDetail(ctx, serviceIDs) (TerminatedAccidentally) (ContainerService)", zap.Strings("serviceIDs", serviceIDs))
-		return err
-	}
+// ke tabel container metrics , jadi container metrics itu nyimpen metrics container yang udah stopped
+// kenapa harus disimpen? karena kalau gak disimpen nanti query prometheus metricsnya = 0 semua dan logic billing salah nanti
+// func (s *ContainerService) SwarmServiceDownAccidentally(ctx context.Context, serviceIDs []string) error {
+// 	// get containers detail dari list of service Ids
+// 	ctrsDB, err := s.containerRepo.GetContainersDetail(ctx, serviceIDs)
+// 	if err != nil {
+// 		zap.L().Error("s.containerRepo.GetContainersDetail(ctx, serviceIDs) (SwarmServiceDownAccidentally) (ContainerService)", zap.Strings("serviceIDs", serviceIDs))
+// 		return err
+// 	}
 
-	//  only filter container yang sebelumnya gak terminatted, karena yg sebelumnya terminated di db udah ada metrics nya di tabel metrics && status di tabel conatainer == terminated && status di tabel lifecycle == stopped
-	for i := range ctrsDB {
-		if ctrsDB[i].Status == domain.ServiceTerminated {
-			// hapus cotnainer yang sebelumnya statusnya terminated, dari ctrsDB
-			// delete inplace arraynya
-			ctrsDB[i] = ctrsDB[len(ctrsDB)-1]
-			ctrsDB = ctrsDB[:len(ctrsDB)-1]
-		}
-	}
+// 	//  only filter container yang sebelumnya gak terminatted, karena yg sebelumnya terminated di db udah ada metrics nya di tabel metrics && status di tabel conatainer == terminated && status di tabel lifecycle == stopped
+// 	for i := range ctrsDB {
+// 		if ctrsDB[i].Status == domain.ServiceTerminated {
+// 			// hapus cotnainer yang sebelumnya statusnya terminated, dari ctrsDB
+// 			// delete inplace arraynya
+// 			ctrsDB[i] = ctrsDB[len(ctrsDB)-1]
+// 			ctrsDB = ctrsDB[:len(ctrsDB)-1]
+// 		}
+// 	}
 
-	// get metrics dari setiap container dari monitor service (loop O(n))
-	var ctrMetrics []domain.Metric
-	for i, _ := range ctrsDB {
-		metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrsDB[i].ID, ctrsDB[i].UserID, ctrsDB[i].CreatedTime)
-		if err != nil {
-			return err
-		}
-		ctrMetrics = append(ctrMetrics, *metric)
+// 	// get metrics dari setiap container dari monitor service (loop O(n))
+// 	var ctrMetrics []domain.Metric
+// 	for i, _ := range ctrsDB {
+// 		metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrsDB[i].ID, ctrsDB[i].UserID, ctrsDB[i].CreatedTime)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		ctrMetrics = append(ctrMetrics, *metric)
 
-	}
+// 	}
 
-	// batch insert container metrics untuk setiap container tadi
-	err = s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics)
-	if err != nil {
-		zap.L().Error("s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics) (TerminatedAccidentally) (ContainerService)")
-		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
-	}
+// 	// batch insert container metrics untuk setiap container tadi
+// 	err = s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics)
+// 	if err != nil {
+// 		zap.L().Error("s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics) (SwarmServiceDownAccidentally) (ContainerService)")
+// 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+// 	}
 
-	//  update batch  semua container tadi,  jadi terminated di tabel container
-	err = s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)
-	if err != nil {
-		zap.L().Error("s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)")
-		return err
-	}
+// 	//  update batch  semua container tadi,  jadi stopped di tabel container
+// 	for i, _ := range ctrsDB {
+// 		ctrsDB[i].Status = domain.ServiceStopped
+// 	}
+	
+// 	err = s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)
+// 	if err != nil {
+// 		zap.L().Error("s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)")
+// 		return err
+// 	}
 
-	// update lifecycle semua container tadi jadi stopped karena emang mati
-	err = s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)
-	if err != nil {
-		zap.L().Error("s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)")
-		return err
-	}
-	return nil
-}
+// 	// update lifecycle semua container tadi jadi stopped karena emang mati
+// 	err = s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)
+// 	if err != nil {
+// 		zap.L().Error("s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)")
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {
 	var recurse func(left int, right int)

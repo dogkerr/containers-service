@@ -43,11 +43,12 @@ func (r *ContainerRepository) GetAllUserContainers(ctx context.Context, userID s
 	var res []domain.Container
 	for _, ctr := range ctrs {
 		cLife := domain.ContainerLifecycle{
-			ID:        ctr.Lifecycleid.UUID.String(),
-			StartTime: ctr.Lifecyclestarttime.Time,
-			StopTime:  ctr.Lifecyclestoptime.Time,
-			Replica:   uint64(ctr.Lifecyclereplica.Int32),
-			Status:    domain.ContainerStatus(ctr.Lifecyclestatus.ContainerStatus),
+			ID:          ctr.Lifecycleid.UUID.String(),
+			StartTime:   ctr.Lifecyclestarttime.Time,
+			StopTime:    ctr.Lifecyclestoptime.Time,
+			Replica:     uint64(ctr.Lifecyclereplica.Int32),
+			ContainerID: ctr.ID.String(),
+			Status:      domain.ContainerStatus(ctr.Lifecyclestatus.ContainerStatus),
 		}
 
 		if (len(res) > 0 && res[len(res)-1].ID != ctr.ID.String()) || len(res) == 0 {
@@ -150,7 +151,7 @@ func (r *ContainerRepository) Insert(ctx context.Context, c *domain.Container) (
 	ctr, err := q.InsertContainer(ctx, queries.InsertContainerParams{
 		UserID:         googleuuid.UUID(uid),
 		Image:          c.Image,
-		Status:         queries.ContainerStatusRUN,
+		Status:         queries.ServiceStatusRUN,
 		Name:           c.Name,
 		ContainerPort:  int32(c.Endpoint[0].TargetPort),
 		PublicPort:     pgtype.Int4{Valid: true, Int32: int32(c.Endpoint[0].PublishedPort)},
@@ -164,25 +165,20 @@ func (r *ContainerRepository) Insert(ctx context.Context, c *domain.Container) (
 
 func (r *ContainerRepository) GetContainersDetail(ctx context.Context, serviceIDs []string) ([]*domain.Container, error) {
 	q := queries.New(r.db.Pool)
-	var serviceIDsUUID []googleuuid.UUID
-	for _, sID := range serviceIDs {
-		sUUID, err := uuid.FromString(sID)
-		if err != nil {
-			zap.L().Error(fmt.Sprintf(" uuid.FromString(sID)"), zap.String("serviceID", sID))
-			return []*domain.Container{}, domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
-		}
-		serviceIDsUUID = append(serviceIDsUUID, googleuuid.UUID(sUUID))
-	}
-	ctrs, err := q.GetContainersByIDs(ctx, serviceIDsUUID)
+
+	zap.L().Info("down ServiceIDs: (GetContainersDetail) (ContainerRepository)", zap.Strings("serviceIDs", serviceIDs))
+
+	ctrs, err := q.GetContainersByIDs(ctx, serviceIDs)
 	if err != nil {
-		zap.L().Error(fmt.Sprintf("containers not found"), zap.Strings("serviceID", serviceIDs))
-		return []*domain.Container{}, domain.WrapErrorf(err, domain.ErrNotFound, fmt.Sprintf(" all containers dengena serviceIDs not found"))
+		zap.L().Error(fmt.Sprintf("containers not found"), zap.Strings("serviceIDs", serviceIDs))
+		return []*domain.Container{}, domain.WrapErrorf(err, domain.ErrNotFound, fmt.Sprintf(" all containers dengan serviceIDs not found"))
 	}
 
 	var res []*domain.Container
 	for _, ctr := range ctrs {
 
 		res = append(res, &domain.Container{
+			ID: ctr.ID.String(),
 			UserID:         ctr.UserID.String(),
 			Status:         domain.ServiceStatus(ctr.Status),
 			Name:           ctr.Name,
@@ -223,15 +219,15 @@ func (r *ContainerRepository) BatchUpdateContainer(ctx context.Context, ctrs []*
 	q := queries.New(r.db.Pool)
 
 	var batchUpdateParams queries.BatchUpdateStatusContainerParams
-	var ctrIDsParams []googleuuid.UUID
+	var serviceIDsParams []string
 
 	for i, _ := range ctrs {
-		ctrUUID, _ := uuid.FromString(ctrs[i].ID)
-		ctrIDsParams = append(ctrIDsParams, googleuuid.UUID(ctrUUID))
+
+		serviceIDsParams = append(serviceIDsParams, ctrs[i].ServiceID)
 
 	}
-	batchUpdateParams.Column1 = ctrIDsParams
-	batchUpdateParams.Status = queries.ContainerStatus(domain.ServiceTerminated)
+	batchUpdateParams.Column1 = serviceIDsParams
+	batchUpdateParams.Status = queries.ServiceStatus(domain.ServiceStopped)
 	err := q.BatchUpdateStatusContainer(ctx, batchUpdateParams)
 	if err != nil {
 		zap.L().Error(" q.BatchUpdateStatusContainer (BatchUpdateContainer) (ContainerRepo)")
@@ -256,10 +252,10 @@ func (r *ContainerRepository) BatchUpdateContainerLifecycle(ctx context.Context,
 	err := q.BatchUpdateStatusContainerLifecycle(ctx, batchUpdateParams)
 	if err != nil {
 		zap.L().Error("q.BatchUpdateStatusContainerLifecycle(ctx, batchUpdateParams) (BatchUpdateContainerLifecycle) (ContainerRepository)")
-		return err  
+		return err
 	}
 
-	return nil 
+	return nil
 }
 
 func (r *ContainerRepository) Update(ctx context.Context, c *domain.Container) error {
@@ -267,7 +263,7 @@ func (r *ContainerRepository) Update(ctx context.Context, c *domain.Container) e
 	err := q.UpdateContainer(ctx, queries.UpdateContainerParams{
 		ServiceID:      c.ServiceID,
 		Image:          c.Image,
-		Status:         queries.ContainerStatus(c.Status),
+		Status:         queries.ServiceStatus(c.Status),
 		Name:           c.Name,
 		ContainerPort:  int32(c.ContainerPort),
 		PublicPort:     pgtype.Int4{Valid: true, Int32: int32(c.PublicPort)},

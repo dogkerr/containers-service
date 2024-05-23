@@ -24,12 +24,12 @@ const batchUpdateStatusContainer = `-- name: BatchUpdateStatusContainer :exec
 UPDATE containers
 SET 
 	status=$2
-WHERE container_id IN  ($1::uuid[])
+WHERE service_id = ANY($1::varchar[])
 `
 
 type BatchUpdateStatusContainerParams struct {
-	Column1 []uuid.UUID
-	Status  ContainerStatus
+	Column1 []string
+	Status  ServiceStatus
 }
 
 func (q *Queries) BatchUpdateStatusContainer(ctx context.Context, arg BatchUpdateStatusContainerParams) error {
@@ -41,7 +41,7 @@ const batchUpdateStatusContainerLifecycle = `-- name: BatchUpdateStatusContainer
 UPDATE container_lifecycles
 SET 
 	status=$2
-WHERE container_id IN  ($1::uuid[])
+WHERE container_id = ANY($1::UUID[])
 `
 
 type BatchUpdateStatusContainerLifecycleParams struct {
@@ -75,7 +75,7 @@ type GetAllUserContainersRow struct {
 	ID                 uuid.UUID
 	UserID             uuid.UUID
 	Image              string
-	Status             ContainerStatus
+	Status             ServiceStatus
 	Name               string
 	ContainerPort      int32
 	PublicPort         pgtype.Int4
@@ -136,7 +136,7 @@ type GetContainerRow struct {
 	ID                 uuid.UUID
 	UserID             uuid.UUID
 	Image              string
-	Status             ContainerStatus
+	Status             ServiceStatus
 	Name               string
 	ContainerPort      int32
 	PublicPort         pgtype.Int4
@@ -224,7 +224,7 @@ type GetContainerWithPaginationRow struct {
 	ID                 uuid.UUID
 	UserID             uuid.UUID
 	Image              string
-	Status             ContainerStatus
+	Status             ServiceStatus
 	Name               string
 	ContainerPort      int32
 	PublicPort         pgtype.Int4
@@ -278,14 +278,14 @@ const getContainersByIDs = `-- name: GetContainersByIDs :many
 SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_port,c.created_time,
 	c.service_id,c.terminated_time
 	FROM containers c 
-	WHERE c.service_id in ($1::uuid[])
+	WHERE c.service_id = ANY($1::varchar[])
 `
 
 type GetContainersByIDsRow struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
 	Image          string
-	Status         ContainerStatus
+	Status         ServiceStatus
 	Name           string
 	ContainerPort  int32
 	PublicPort     pgtype.Int4
@@ -294,7 +294,7 @@ type GetContainersByIDsRow struct {
 	TerminatedTime pgtype.Timestamptz
 }
 
-func (q *Queries) GetContainersByIDs(ctx context.Context, dollar_1 []uuid.UUID) ([]GetContainersByIDsRow, error) {
+func (q *Queries) GetContainersByIDs(ctx context.Context, dollar_1 []string) ([]GetContainersByIDsRow, error) {
 	rows, err := q.db.Query(ctx, getContainersByIDs, dollar_1)
 	if err != nil {
 		return nil, err
@@ -336,7 +336,7 @@ INSERT INTO containers (
 type InsertContainerParams struct {
 	UserID         uuid.UUID
 	Image          string
-	Status         ContainerStatus
+	Status         ServiceStatus
 	Name           string
 	ContainerPort  int32
 	PublicPort     pgtype.Int4
@@ -452,7 +452,7 @@ WHERE service_id=$1
 type UpdateContainerParams struct {
 	ServiceID      string
 	Image          string
-	Status         ContainerStatus
+	Status         ServiceStatus
 	Name           string
 	ContainerPort  int32
 	PublicPort     pgtype.Int4

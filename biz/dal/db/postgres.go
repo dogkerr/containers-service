@@ -4,6 +4,7 @@ import (
 	"context"
 	"dogker/lintang/container-service/config"
 	"net/url"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,12 +42,13 @@ func NewPostgres(cfg *config.Config) *Postgres {
 	dbConfig, err := pgxpool.ParseConfig(dsn.String())
 	dbConfig.MaxConns = 10
 	dbConfig.MinConns = 2
-	pool, err := pgxpool.NewWithConfig(context.Background(),  dbConfig)
+	dbConfig.ConnConfig.ConnectTimeout = 40 * time.Second
+	
+	pool, err := pgxpool.NewWithConfig(context.Background(), dbConfig)
 	if err != nil {
 		zap.L().Fatal("pgxpool connect", zap.Error(err))
 	}
 
-	
 	if err := pool.Ping(context.Background()); err != nil {
 		hlog.Fatal("db.PingContext", zap.Error(err))
 	}

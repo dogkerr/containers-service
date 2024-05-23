@@ -1,0 +1,30 @@
+# Step 1: Modules caching
+FROM golang:1.22.2-alpine as modules
+COPY go.mod go.sum /modules/
+WORKDIR /modules
+RUN go mod download
+
+# Step 2: Builder
+FROM golang:1.22.2-alpine as builder
+COPY --from=modules /go/pkg /go/pkg
+COPY . /app
+WORKDIR /app
+
+RUN CGO_ENABLED=0 GOOS=linux \
+    go build -gcflags "all=-N -l"  -o container-service .
+RUN CGO_ENABLED=0 go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@latest
+
+
+FROM alpine
+COPY --from=builder /app/.env .
+COPY --from=builder /go/bin/dlv .
+COPY --from=builder /app/container-service /app/container-service
+
+
+EXPOSE 6969
+CMD [ "./dlv", "--listen=:6969", "--continue", "--headless=true",  "--accept-multiclient", "--api-version=2", "exec", "/app/container-service" ]
+
+
+
+
+

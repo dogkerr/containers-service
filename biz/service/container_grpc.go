@@ -5,6 +5,7 @@ import (
 	"dogker/lintang/container-service/biz/domain"
 	pb "dogker/lintang/container-service/kitex_gen/container-service/pb"
 	"errors"
+	"fmt"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -20,7 +21,7 @@ type ContainerGRPCServiceImpl struct {
 	minioAPI      MinioAPI
 }
 
-func NewContainerGRPCService( c ContainerRepository, d DockerEngineAPI, dkron DkronAPI, monitorSvc MonitorClient,
+func NewContainerGRPCService(c ContainerRepository, d DockerEngineAPI, dkron DkronAPI, monitorSvc MonitorClient,
 	minioAPI MinioAPI) *ContainerGRPCServiceImpl {
 	return &ContainerGRPCServiceImpl{
 		c, d, dkron, monitorSvc, minioAPI,
@@ -30,13 +31,14 @@ func NewContainerGRPCService( c ContainerRepository, d DockerEngineAPI, dkron Dk
 // Hello implements the ContainerGRPCServiceImpl interface.
 func (s *ContainerGRPCServiceImpl) Hello(ctx context.Context, req *pb.HelloReq) (resp *pb.HelloResp, err error) {
 	// TODO: Your code here...
-	return nil, nil 
+	return nil, nil
 }
 
 // ContainerTerminatedAccidentally implements the ContainerGRPCServiceImpl interface.
 func (s *ContainerGRPCServiceImpl) ContainerTerminatedAccidentally(ctx context.Context, req *pb.ContainerTerminatedAccidentallyReq) (resp *pb.ContainerTerminatedAccidentallyRes, err error) {
 	// TODO: Your code here...
 	// get containers detail dari list of service Ids
+	zap.L().Info(fmt.Sprintf("down ServiceIDs: %s", req.ServiceIDs), zap.Strings("serviceIDs", req.ServiceIDs))
 	ctrsDB, err := s.containerRepo.GetContainersDetail(ctx, req.ServiceIDs)
 	if err != nil {
 		zap.L().Error("s.containerRepo.GetContainersDetail(ctx, serviceIDs) (TerminatedAccidentally) (ContainerService)", zap.Strings("serviceIDs", req.ServiceIDs))
@@ -56,7 +58,7 @@ func (s *ContainerGRPCServiceImpl) ContainerTerminatedAccidentally(ctx context.C
 	// get metrics dari setiap container dari monitor service (loop O(n))
 	var ctrMetrics []domain.Metric
 	for i, _ := range ctrsDB {
-		metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrsDB[i].ID, ctrsDB[i].UserID, ctrsDB[i].CreatedTime)
+		metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrsDB[i].ServiceID, ctrsDB[i].UserID, ctrsDB[i].CreatedTime)
 		if err != nil {
 			zap.L().Error(" s.monitorClient.GetSpecificContainerMetrics (ContainerTerminatedAccidentally) (containerGRPCService)", zap.Error(err))
 			return nil, status.Errorf(getStatusCode(err), "%v", err)
@@ -72,7 +74,7 @@ func (s *ContainerGRPCServiceImpl) ContainerTerminatedAccidentally(ctx context.C
 		return nil, status.Errorf(getStatusCode(err), "%v", err)
 	}
 
-	//  update batch  semua container tadi,  jadi terminated di tabel container
+	//  update batch  semua container tadi,  jadi stopped di tabel container
 	err = s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)
 	if err != nil {
 		zap.L().Error("s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)")

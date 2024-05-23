@@ -96,11 +96,55 @@ func (ns NullDashboardType) Value() (driver.Value, error) {
 	return string(ns.DashboardType), nil
 }
 
+type ServiceStatus string
+
+const (
+	ServiceStatusCREATED    ServiceStatus = "CREATED"
+	ServiceStatusRUN        ServiceStatus = "RUN"
+	ServiceStatusSTOPPED    ServiceStatus = "STOPPED"
+	ServiceStatusTERMINATED ServiceStatus = "TERMINATED"
+)
+
+func (e *ServiceStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ServiceStatus(s)
+	case string:
+		*e = ServiceStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ServiceStatus: %T", src)
+	}
+	return nil
+}
+
+type NullServiceStatus struct {
+	ServiceStatus ServiceStatus
+	Valid         bool // Valid is true if ServiceStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullServiceStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.ServiceStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ServiceStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullServiceStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ServiceStatus), nil
+}
+
 type Container struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
 	Image          string
-	Status         ContainerStatus
+	Status         ServiceStatus
 	Name           string
 	ContainerPort  int32
 	PublicPort     pgtype.Int4
@@ -133,6 +177,18 @@ type Dashboard struct {
 	Uid    string
 	Owner  uuid.UUID
 	DbType DashboardType
+}
+
+type ProcessedAutoscalingContainer struct {
+	ID          uuid.UUID
+	ContainerID uuid.UUID
+	ActionTime  pgtype.Timestamptz
+}
+
+type ProcessedTerminatedContainer struct {
+	ID          uuid.UUID
+	ContainerID uuid.UUID
+	DownTime    pgtype.Timestamptz
 }
 
 type User struct {

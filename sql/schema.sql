@@ -1,4 +1,5 @@
 CREATE TYPE container_status AS ENUM ('RUN', 'STOP');
+CREATE TYPE service_status AS ENUM('CREATED', 'RUN', 'STOPPED', 'TERMINATED');
 
 
 CREATE TABLE users (
@@ -13,7 +14,7 @@ CREATE TABLE containers (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY ,
     user_id UUID NOT NULL,
     image VARCHAR(255) NOT NULL,
-    status container_status NOT NULL,
+    status service_status NOT NULL,
     name VARCHAR(255) NOT NULL,
     container_port int NOT NULL,
     public_port int,
@@ -46,6 +47,23 @@ CREATE TABLE container_metrics (
 );
 
 
+
+CREATE TABLE processed_terminated_container (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY ,
+    container_id UUID NOT NULL,
+    down_time  timestamp with time zone  DEFAULT NOW() NOT NULL
+);
+
+
+CREATE TABLE processed_autoscaling_container (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY ,
+    container_id UUID NOT NULL ,
+    action_time timestamp with time zone  DEFAULT NOW() NOT NULL
+);
+
+
+
+
 ALTER TABLE container_lifecycles ADD  CONSTRAINT fk_lifecycles_containers
     FOREIGN KEY (container_id)
     REFERENCES containers (id);
@@ -59,6 +77,15 @@ ALTER TABLE container_metrics ADD CONSTRAINT fk_container_metrics
     FOREIGN KEY (container_id)
     REFERENCES containers(id);
 
+ALTER TABLE processed_terminated_container ADD CONSTRAINT fk_processed_terminated_container
+    FOREIGN KEY (container_id)
+    REFERENCES containers(id);
+
+
+ALTER TABLE processed_autoscaling_container ADD CONSTRAINT fk_processed_autoscaling_container
+    FOREIGN KEY (container_id)
+    REFERENCES containers(id);
+    
 
 INSERT INTO users( username, email, password) 
     VALUES ('asda', 'sadasd@gmail.com', 'asdad');

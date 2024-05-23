@@ -9,8 +9,10 @@ FROM golang:1.22.2-alpine as builder
 COPY --from=modules /go/pkg /go/pkg
 COPY . /app
 WORKDIR /app
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux \
     go build -o /bin/app .
+
+#GOARCH=amd64 
 
 # Step 3: Final
 FROM alpine

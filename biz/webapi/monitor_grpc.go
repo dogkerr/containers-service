@@ -38,6 +38,7 @@ func (m *MonitorClient) GetSpecificContainerMetrics(ctx context.Context, ctrID s
 	}
 
 	res := &domain.Metric{
+		ContainerID: ctrMetrics.UserContainer.Id,
 		CpuUsage:            ctrMetrics.UserContainer.CpuUsage,
 		MemoryUsage:         ctrMetrics.UserContainer.MemoryUsage,
 		NetworkIngressUsage: ctrMetrics.UserContainer.NetworkIngressUsage,

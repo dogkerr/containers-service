@@ -37,7 +37,7 @@ type ContainerService interface {
 	CreateNewServiceAndUpload(ctx context.Context, d *domain.Container, imageFile *multipart.FileHeader,
 		imageName string) (string, time.Time, *domain.ContainerLifecycle, error)
 	GetUserContainersLoadTest(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
-	TerminatedAccidentally(ctx context.Context, serviceIDs []string) error
+	// SwarmServiceDownAccidentally(ctx context.Context, serviceIDs []string) error
 }
 
 type ContainerHandler struct {
@@ -637,7 +637,7 @@ type cronTerminatedAccidentallyReq struct {
 // 	}
 // 	if len(req.ServiceIDs) != 0 {
 
-// 		// kalau emang ada 
+// 		// kalau emang ada
 // 	}
 // 	c.JSON(http.StatusOK, "ok")
 // }

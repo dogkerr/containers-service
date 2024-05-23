@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+package containerservice;
 
 option go_package = "container-service/pb";
 

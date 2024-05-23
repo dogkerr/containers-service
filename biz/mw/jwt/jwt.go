@@ -4,14 +4,18 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/x509"
+	"dogker/lintang/container-service/biz/webapi"
 	"encoding/pem"
 	"log"
+	"os"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	gojwt "github.com/golang-jwt/jwt/v4"
 	"github.com/hertz-contrib/jwt"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var (
@@ -60,6 +64,16 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 		Authorizator: func(data interface{}, ctx context.Context, c *app.RequestContext) bool {
 			if v, ok := data.(*User); ok {
 				c.Set("userID", v.ID)
+				authCC, err := grpc.NewClient(os.Getenv("AUTH_URL")+"?wait=30s", grpc.WithTransportCredentials(insecure.NewCredentials()))
+				if err != nil {
+					zap.L().Error("grpc.NewClient", zap.Error(err ))
+					return false
+				}
+				userClient := webapi.NewUserClient(authCC)
+				err = userClient.GetUser(ctx, v.ID)
+				if err != nil {
+					return false
+				}
 
 				return true
 			}
@@ -74,7 +88,7 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 		},
 
 		TokenLookup: "header: Authorization, query: token, cookie: jwt",
-	
+
 		// TokenHeadName is a string in the header. Default value is "Bearer". If you want empty value, use WithoutDefaultTokenHeadName.
 		TokenHeadName: "Bearer",
 
@@ -84,6 +98,7 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 			// if gojwt.GetSigningMethod(gojwt.SigningMethodECDSA) != t.Method {
 			// 	return nil, jwt.ErrInvalidSigningAlgorithm
 			// }
+
 			if _, ok := t.Method.(*gojwt.SigningMethodECDSA); !ok {
 				return nil, jwt.ErrInvalidSigningAlgorithm
 			}
@@ -92,7 +107,7 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 		},
 	})
 	if err != nil {
-		zap.L().Fatal("JWT Error:" + err.Error(), zap.Error(err))
+		zap.L().Fatal("JWT Error:"+err.Error(), zap.Error(err))
 	}
 	return JwtMiddleware
 }

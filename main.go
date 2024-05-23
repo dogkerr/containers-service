@@ -60,12 +60,14 @@ func main() {
 
 	opts = append(opts, kitexServer.WithMetaHandler(transmeta.ServerHTTP2Handler))
 	opts = append(opts, kitexServer.WithServiceAddr(addr))
-	opts = append(opts, kitexServer.WithExitWaitTime(5 *time.Second))
-	
+	opts = append(opts, kitexServer.WithExitWaitTime(5*time.Second))
+	opts = append(opts, kitexServer.WithGRPCReadBufferSize(64000000))
+
+	opts = append(opts, kitexServer.WithGRPCWriteBufferSize(64000000))
+
 	cGrpcSvc := di.InitContainerGRPCService(pg, rmq, cfg, cc)
 	srv := containergrpcservice.NewServer(cGrpcSvc, opts...)
 	klog.SetLogger(pkg.InitZapKitexLogger(cfg))
-
 
 	go func() {
 		err := srv.Run()
@@ -77,8 +79,3 @@ func main() {
 	router.MyRouter(h, cSvc)
 	h.Spin()
 }
-
-
-
-
-
