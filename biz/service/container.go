@@ -30,6 +30,8 @@ type ContainerRepository interface {
 	BatchUpdateContainerLifecycle(ctx context.Context, ctrs []*domain.Container) error
 	GetStoppedContainer(ctx context.Context) ([]domain.Container, error)
 	BatchUpdateRunStatusContainer(ctx context.Context, ctrs []*domain.Container) error
+	GetRunContainers(ctx context.Context) ([]domain.Container, error)
+	UpdateContainerLifecycleStatus(ctx context.Context, status domain.ContainerStatus, lifeCycleID string) error
 }
 
 type DockerEngineAPI interface {
@@ -542,13 +544,49 @@ func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.
 	// get semua ctr yang stattus nya stopped
 	stoppedCtrs, err := s.containerRepo.GetStoppedContainer(ctx)
 	if err != nil {
-		zap.L().Error("s.containerRepo.GetStoppedContainer (Container)")
+		zap.L().Error("s.containerRepo.GetStoppedContainer (ContainerService)")
 		return err
+	}
+
+	runCtrs, err := s.containerRepo.GetRunContainers(ctx) // mendapatkan container di db yg statusnya run, tapi lifecycle terakhirnya stopped karena cron job container down
+	if err != nil {
+		zap.L().Error("s.containerRepo.GetRunContainers (ContainerService)")
+		return err
+	}
+
+	// fix lifecycle statsus container yg stopped padahal masih jalan (karena cron job container down)
+	for i, _ := range runCtrs {
+		latestLifeCycle := qSortWaktu(runCtrs[i].ContainerLifecycles)
+		stoppedServiceLifecycleSvcID := runCtrs[i].ServiceID
+		ctrFromDockerAPI, err := s.dockerAPI.Get(ctx, stoppedServiceLifecycleSvcID, &runCtrs[i])
+		if err != nil {
+			zap.L().Debug("s.dockerAPI.Get (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.Error(err))
+			continue
+		}
+		zap.L().Info("latestLifeCycle (RecoverContainerAfterStoppedAccidentally) (ContainerService)")
+
+		dateString := "0001-01-01T00:00:00Z"
+		dateNull, error := time.Parse("2006-01-02T00:00:00Z", dateString)
+
+		if error != nil {
+			zap.L().Error("time.Parse (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.Error(err))
+			return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
+		}
+		if ctrFromDockerAPI.Status == domain.ServiceRun && ctrFromDockerAPI.TerminatedTime == dateNull && latestLifeCycle.Status == domain.ContainerStatusSTOPPED {
+			// ketika lifecycle terakhir stopped & terminatedtime == "0001-01-01T00:00:00Z" && container masih run pas dicek doker api
+			// -> update status this lifecycle jd RUN
+			err := s.containerRepo.UpdateContainerLifecycleStatus(ctx, domain.ContainerStatusRUN, latestLifeCycle.ID)
+			if err != nil {
+				zap.L().Error(" s.containerRepo.UpdateContainerLifecycleStatus (RecoverContainerAfterStoppedAccidentally) (ContainerService", zap.Error(err))
+				return err
+			}
+		}
+
 	}
 
 	var recoveredContainer []*domain.Container
 
-	// cek di docker swarm apakah semau ctr tadi stattusnya sekarang sudah running (di recover sama docker swarm)
+	// cek di docker swarm apakah semau ctr yg di stop bukan lewat endpoitn api conatiner-service stattusnya sekarang sudah running (di recover sama docker swarm)
 	// jika status di docker swawrm running update status container nya dan insert ctrLifecycle dg status RUN
 	for i, _ := range stoppedCtrs {
 		stoppedServiceID := stoppedCtrs[i].ServiceID
@@ -557,10 +595,17 @@ func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.
 			zap.L().Debug("s.dockerAPI.Get (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.Error(err))
 			continue
 		}
-		if ctrFromDockerAPI.Status == domain.ServiceRun {
+		// cek sekali lagi apakah masih stopped status containernya
+		stoppedCtr,err := s.containerRepo.Get(ctx, stoppedServiceID)
+		if err != nil {
+			zap.L().Error("s.containerRepo.Get (RecoverContainerAfterStoppedAccidentally) (ContainerService) ", zap.Error(err))
+			return err 
+		}
+		if ctrFromDockerAPI.Status == domain.ServiceRun && stoppedCtr.Status == domain.ServiceStopped {
 			// kalau status container sekarang run berarti update status container & container lifecycle jadi run
 			recoveredContainer = append(recoveredContainer, &stoppedCtrs[i])
 
+			// bugnya yang nambahin lifecycle sendiri itu disini cok
 			_, err := s.containerRepo.InsertLifecycle(ctx, &domain.ContainerLifecycle{
 				ContainerID: stoppedCtrs[i].ID,
 				StartTime:   time.Now(),
@@ -572,6 +617,8 @@ func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.
 				return err
 			}
 		}
+
+		//
 
 	}
 

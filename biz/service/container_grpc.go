@@ -81,7 +81,6 @@ func (s *ContainerGRPCServiceImpl) StopContainerCreditLimit(ctx context.Context,
 	}
 
 	return res, nil
-
 }
 
 // ContainerTerminatedAccidentally implements the ContainerGRPCServiceImpl interface.

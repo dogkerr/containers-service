@@ -18,3 +18,5 @@ message User {
   string fullname = 3;
   string username = 4;
 }
+
+

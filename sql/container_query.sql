@@ -32,6 +32,13 @@ SELECT c.id, c.service_id, c.name
 	FROM containers c
 	WHERE c.status = $1;
 
+-- name: GetContainersByStatus :many
+SELECT c.id, c.service_id, c.name, cl.id as lifeId, cl.start_time as lifecycleStartTime, cl.stop_time as lifecycleStopTime,  cl.status as lifecycleStatus ,
+	cl.container_id as cLifeCtrID
+	FROM containers c
+	LEFT JOIN container_lifecycles cl ON cl.container_id=c.id
+	WHERE c.status = $1;
+
 -- name: InsertContainer :one
 INSERT INTO containers (
 	user_id, image, status, name, container_port, public_port, terminated_time, created_time, service_id
@@ -97,6 +104,13 @@ SET
 	status=$3,
 	replica=$4
 WHERE id=$1;
+
+-- name: UpdateContainerLifecycleStatus :exec
+UPDATE container_lifecycles
+SET 
+	status=$2
+WHERE id=$1;
+
 
 
 

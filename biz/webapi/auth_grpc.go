@@ -19,7 +19,7 @@ func NewUserClient(cc *grpc.ClientConn) *AuthClient {
 }
 
 func (m *AuthClient) GetUser(ctx context.Context, userID string) error {
-	grpcCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	grpcCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req := &pb.GetUserRequest{

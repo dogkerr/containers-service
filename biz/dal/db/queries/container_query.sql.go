@@ -325,6 +325,54 @@ func (q *Queries) GetContainersByIDs(ctx context.Context, dollar_1 []string) ([]
 	return items, nil
 }
 
+const getContainersByStatus = `-- name: GetContainersByStatus :many
+SELECT c.id, c.service_id, c.name, cl.id as lifeId, cl.start_time as lifecycleStartTime, cl.stop_time as lifecycleStopTime,  cl.status as lifecycleStatus ,
+	cl.container_id as cLifeCtrID
+	FROM containers c
+	LEFT JOIN container_lifecycles cl ON cl.container_id=c.id
+	WHERE c.status = $1
+`
+
+type GetContainersByStatusRow struct {
+	ID                 uuid.UUID
+	ServiceID          string
+	Name               string
+	Lifeid             uuid.NullUUID
+	Lifecyclestarttime pgtype.Timestamptz
+	Lifecyclestoptime  pgtype.Timestamptz
+	Lifecyclestatus    NullContainerStatus
+	Clifectrid         uuid.NullUUID
+}
+
+func (q *Queries) GetContainersByStatus(ctx context.Context, status ServiceStatus) ([]GetContainersByStatusRow, error) {
+	rows, err := q.db.Query(ctx, getContainersByStatus, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetContainersByStatusRow
+	for rows.Next() {
+		var i GetContainersByStatusRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ServiceID,
+			&i.Name,
+			&i.Lifeid,
+			&i.Lifecyclestarttime,
+			&i.Lifecyclestoptime,
+			&i.Lifecyclestatus,
+			&i.Clifectrid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStoppedContainer = `-- name: GetStoppedContainer :many
 SELECT c.id, c.service_id, c.name
 	FROM containers c
@@ -546,5 +594,22 @@ func (q *Queries) UpdateContainerLifecycle(ctx context.Context, arg UpdateContai
 		arg.Status,
 		arg.Replica,
 	)
+	return err
+}
+
+const updateContainerLifecycleStatus = `-- name: UpdateContainerLifecycleStatus :exec
+UPDATE container_lifecycles
+SET 
+	status=$2
+WHERE id=$1
+`
+
+type UpdateContainerLifecycleStatusParams struct {
+	ID     uuid.UUID
+	Status ContainerStatus
+}
+
+func (q *Queries) UpdateContainerLifecycleStatus(ctx context.Context, arg UpdateContainerLifecycleStatusParams) error {
+	_, err := q.db.Exec(ctx, updateContainerLifecycleStatus, arg.ID, arg.Status)
 	return err
 }

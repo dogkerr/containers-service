@@ -236,7 +236,6 @@ func (r *ContainerRepository) BatchUpdateContainer(ctx context.Context, ctrs []*
 	return nil
 }
 
-
 func (r *ContainerRepository) BatchUpdateRunStatusContainer(ctx context.Context, ctrs []*domain.Container) error {
 	q := queries.New(r.db.Pool)
 
@@ -279,7 +278,6 @@ func (r *ContainerRepository) BatchUpdateRunStatusContainer(ctx context.Context,
 
 // 	return nil
 // }
-
 
 func (r *ContainerRepository) BatchUpdateContainerLifecycle(ctx context.Context, ctrs []*domain.Container) error {
 	q := queries.New(r.db.Pool)
@@ -360,7 +358,6 @@ func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.Con
 	}
 	return res, nil
 }
-
 
 func (r *ContainerRepository) GetLifecycle(ctx context.Context, lifeId string) (*domain.ContainerLifecycle, error) {
 	q := queries.New(r.db.Pool)
@@ -447,22 +444,75 @@ func (r *ContainerRepository) InsertContainerMetrics(ctx context.Context, metric
 func (r *ContainerRepository) GetStoppedContainer(ctx context.Context) ([]domain.Container, error) {
 	q := queries.New(r.db.Pool)
 
-	stoppedCtrRows, err  := q.GetStoppedContainer(ctx, queries.ServiceStatusSTOPPED)
+	stoppedCtrRows, err := q.GetStoppedContainer(ctx, queries.ServiceStatusSTOPPED)
 	if err != nil {
 		zap.L().Error("q.GetStoppedContainer (GetStoppedContainer) (ContainerRepository)", zap.Error(err))
-		return []domain.Container{}, err 
+		return []domain.Container{}, err
 	}
 
 	var ctrs []domain.Container
 	for i, _ := range stoppedCtrRows {
+
 		ctrs = append(ctrs, domain.Container{
-			ID: stoppedCtrRows[i].ID.String(),
+			ID:        stoppedCtrRows[i].ID.String(),
 			ServiceID: stoppedCtrRows[i].ServiceID,
-			Name: stoppedCtrRows[i].Name,
-		} )
+			Name:      stoppedCtrRows[i].Name,
+		})
+
 	}
 
-	return ctrs, nil 
+	return ctrs, nil
 }
 
+// buat fix bug stopped lifecylce setelah stop -> start container
+func (r *ContainerRepository) GetRunContainers(ctx context.Context) ([]domain.Container, error) {
+	q := queries.New(r.db.Pool)
 
+	stoppedCtrRows, err := q.GetContainersByStatus(ctx, queries.ServiceStatusRUN)
+	if err != nil {
+		zap.L().Error("q.GetStoppedContainer (GetStoppedContainer) (ContainerRepository)", zap.Error(err))
+		return []domain.Container{}, err
+	}
+
+	var ctrs []domain.Container
+	for i, _ := range stoppedCtrRows {
+		cLife := domain.ContainerLifecycle{
+			ID:          stoppedCtrRows[i].Lifeid.UUID.String(),
+			StartTime:   stoppedCtrRows[i].Lifecyclestarttime.Time,
+			StopTime:    stoppedCtrRows[i].Lifecyclestoptime.Time,
+			ContainerID: stoppedCtrRows[i].Clifectrid.UUID.String(),
+			Status:      domain.ContainerStatus(stoppedCtrRows[i].Lifecyclestatus.ContainerStatus),
+		}
+
+		if (len(ctrs) > 0 && ctrs[len(ctrs)-1].ID != stoppedCtrRows[i].ID.String()) || len(ctrs) == 0 {
+			var newCl []domain.ContainerLifecycle
+
+			ctrs = append(ctrs, domain.Container{
+				ID:                  stoppedCtrRows[i].ID.String(),
+				ServiceID:           stoppedCtrRows[i].ServiceID,
+				Name:                stoppedCtrRows[i].Name,
+				ContainerLifecycles: append(newCl, cLife),
+			})
+		} else {
+			ctrs[len(ctrs)-1].ContainerLifecycles = append(ctrs[len(ctrs)-1].ContainerLifecycles, cLife)
+		}
+
+	}
+
+	return ctrs, nil
+}
+
+func (r *ContainerRepository) UpdateContainerLifecycleStatus(ctx context.Context, status domain.ContainerStatus, lifeCycleID string) error {
+	q := queries.New(r.db.Pool)
+
+	lifeUUID, err := uuid.FromString(lifeCycleID)
+	if err != nil {
+		zap.L().Error(" uuid.FromString (UpdateContainerLifecycleStatus) (ContainerRepository)", zap.Error(err))
+	}
+	err = q.UpdateContainerLifecycleStatus(ctx, queries.UpdateContainerLifecycleStatusParams{ID: googleuuid.UUID(lifeUUID), Status: queries.ContainerStatus(status)})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
