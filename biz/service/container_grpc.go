@@ -34,6 +34,56 @@ func (s *ContainerGRPCServiceImpl) Hello(ctx context.Context, req *pb.HelloReq) 
 	return nil, nil
 }
 
+// StopContainerCreditLimit implements the ContainerGRPCServiceImpl interface.
+func (s *ContainerGRPCServiceImpl) StopContainerCreditLimit(ctx context.Context, req *pb.StopUserContainerCreditLimitReq) (resp *pb.StopUserContainerCreditLimitRes, err error) {
+	// TODO: Your code here...
+	userCtrs, err := s.containerRepo.GetAllUserContainers(ctx, req.UserID)
+	if err != nil {
+		zap.L().Error("s.containerRepo.GetAllUserContainers", zap.Error(err))
+	}
+
+	for _, ctr := range *userCtrs {
+		// stop container di docker
+		ctrID := ctr.ServiceID
+		err = s.dockerAPI.Stop(ctx, ctrID, ctr.UserID, &ctr)
+		if err != nil {
+			zap.L().Error("s.dockerAPI.Stop (StopContainerCreditLimit) (ContainerGRPC)", zap.Error(err))
+			return nil, status.Errorf(getStatusCode(err), "%v", err)
+		}
+	}
+
+	var ctrs []*domain.Container
+	for _, ctr := range *userCtrs {
+		ctrs = append(ctrs, &domain.Container{
+			ID:            ctr.ID,
+			UserID:        ctr.UserID,
+			Image:         ctr.Image,
+			Status:        domain.ServiceStatus(ctr.Status),
+			Name:          ctr.Name,
+			ContainerPort: int(ctr.ContainerPort),
+			ServiceID:     ctr.ServiceID,
+		})
+	}
+	err = s.containerRepo.BatchUpdateContainer(ctx, ctrs) // update status container jadi stop
+	if err != nil {
+		zap.L().Error("s.containerRepo.BatchUpdateContainer (StopContainerCreditLimit) (ContainerGRPC)", zap.Error(err))
+		return nil, status.Errorf(getStatusCode(err), "%v", err)
+	}
+
+	err = s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrs) //  update status containerlifecycle jadi stopped
+	if err != nil {
+		zap.L().Error("s.containerRepo.BatchUpdateContainerLifecycle (StopContainerCreditLimit) (ContainerGRPC)", zap.Error(err))
+		return nil, status.Errorf(getStatusCode(err), "%v", err)
+	}
+
+	res := &pb.StopUserContainerCreditLimitRes{
+		Message: "user container succesfully stopped",
+	}
+
+	return res, nil
+
+}
+
 // ContainerTerminatedAccidentally implements the ContainerGRPCServiceImpl interface.
 func (s *ContainerGRPCServiceImpl) ContainerTerminatedAccidentally(ctx context.Context, req *pb.ContainerTerminatedAccidentallyReq) (resp *pb.ContainerTerminatedAccidentallyRes, err error) {
 	// TODO: Your code here...

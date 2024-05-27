@@ -24,8 +24,20 @@ import (
 	kitexServer "github.com/cloudwego/kitex/server"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
+
+	"github.com/hertz-contrib/swagger"     // hertz-swagger middleware
+	swaggerFiles "github.com/swaggo/files" // swagger embed files
+	// hertz-swagger middleware
+	// swagger embed files
 )
 
+
+// @title go-container-service-lintang
+// @version 1.0
+// @description init container service buat dogker
+
+// @contact.name lintang
+// @contact.url https
 func main() {
 	cfg, err := config.NewConfig()
 	logsCores := pkg.InitZapLogger(cfg)
@@ -53,6 +65,10 @@ func main() {
 	callback = append(callback, rmq.Close, pg.ClosePostgres)
 	h.Engine.OnShutdown = append(h.Engine.OnShutdown, callback...) /// graceful shutdown
 	cSvc := di.InitContainerService(pg, rmq, cfg, cc)
+
+	// swagger
+	url := swagger.URL("http://localhost:8888/swagger/doc.json") // The url pointing to API definition
+	h.GET("/swagger/*any", swagger.WrapHandler(swaggerFiles.Handler, url))
 
 	// kitex grpc server
 	var opts []kitexServer.Option

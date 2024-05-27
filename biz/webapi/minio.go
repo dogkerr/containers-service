@@ -23,7 +23,11 @@ type MinioAPI struct {
 	SecretAccessKey string
 }
 
+
 func NewMinioAPI(cfg *config.Config) *MinioAPI {
+	zap.L().Info(fmt.Sprintf("acc key minio: %s", cfg.Minio.AccessKeyID))
+	zap.L().Info(fmt.Sprintf("secret key minio: %s", cfg.Minio.SecretAccessKey))
+
 	return &MinioAPI{
 		BaseURL:         cfg.Minio.BaseURL,
 		AccessKeyID:     cfg.Minio.AccessKeyID,
@@ -50,7 +54,7 @@ func (m *MinioAPI) UploadTarSourceCode(ctx context.Context, imageFile *multipart
 		if errBucketExists == nil && exists {
 			zap.L().Debug(fmt.Sprintf("bucket %s already exists", bucketName))
 		} else {
-			zap.L().Error(fmt.Sprint("MakeBucket minio %s", bucketName))
+			zap.L().Error(fmt.Sprint("MakeBucket minio %s", bucketName), zap.Error(err))
 			return nil, "", "", domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
 		}
 	} else {

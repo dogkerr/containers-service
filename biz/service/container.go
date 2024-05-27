@@ -28,6 +28,8 @@ type ContainerRepository interface {
 	BatchInsertContainerMetrics(ctx context.Context, metr []domain.Metric) error
 	BatchUpdateContainer(ctx context.Context, ctrs []*domain.Container) error
 	BatchUpdateContainerLifecycle(ctx context.Context, ctrs []*domain.Container) error
+	GetStoppedContainer(ctx context.Context) ([]domain.Container, error)
+	BatchUpdateRunStatusContainer(ctx context.Context, ctrs []*domain.Container) error
 }
 
 type DockerEngineAPI interface {
@@ -533,68 +535,55 @@ func (s *ContainerService) ScheduleCreate(ctx context.Context, userID string, sc
 	return nil
 }
 
-// SwarmServiceDownAccidentally
-// @Desc ini dipanggil  setiap 4 detik ketika ada container stopped > 2 detik
-// terus metrics dari ctr stopped tsb di get dari monitor-service, terus metricsnya bakal diinsert
-// set container status stop && container lifecycle stopped
-// kalau sebelumnya terminated di ctrnya, berarti gak usah di insert metricsnya lagi karena emang pernah diinsert pas deleteContainer
-// ke tabel container metrics , jadi container metrics itu nyimpen metrics container yang udah stopped
-// kenapa harus disimpen? karena kalau gak disimpen nanti query prometheus metricsnya = 0 semua dan logic billing salah nanti
-// func (s *ContainerService) SwarmServiceDownAccidentally(ctx context.Context, serviceIDs []string) error {
-// 	// get containers detail dari list of service Ids
-// 	ctrsDB, err := s.containerRepo.GetContainersDetail(ctx, serviceIDs)
-// 	if err != nil {
-// 		zap.L().Error("s.containerRepo.GetContainersDetail(ctx, serviceIDs) (SwarmServiceDownAccidentally) (ContainerService)", zap.Strings("serviceIDs", serviceIDs))
-// 		return err
-// 	}
+// RecoverContainerAfterStoppedAccidentally
+// @Desc: setelah docker swarm recover container yang accidentally stopped, update status container jadi RUN dan insert new ctrLifecycle dg status RUN
+// ctrLifecyle kalau mau update status RUN harus insert row baru ke tabelnya
+func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.Context) error {
+	// get semua ctr yang stattus nya stopped
+	stoppedCtrs, err := s.containerRepo.GetStoppedContainer(ctx)
+	if err != nil {
+		zap.L().Error("s.containerRepo.GetStoppedContainer (Container)")
+		return err
+	}
 
-// 	//  only filter container yang sebelumnya gak terminatted, karena yg sebelumnya terminated di db udah ada metrics nya di tabel metrics && status di tabel conatainer == terminated && status di tabel lifecycle == stopped
-// 	for i := range ctrsDB {
-// 		if ctrsDB[i].Status == domain.ServiceTerminated {
-// 			// hapus cotnainer yang sebelumnya statusnya terminated, dari ctrsDB
-// 			// delete inplace arraynya
-// 			ctrsDB[i] = ctrsDB[len(ctrsDB)-1]
-// 			ctrsDB = ctrsDB[:len(ctrsDB)-1]
-// 		}
-// 	}
+	var recoveredContainer []*domain.Container
 
-// 	// get metrics dari setiap container dari monitor service (loop O(n))
-// 	var ctrMetrics []domain.Metric
-// 	for i, _ := range ctrsDB {
-// 		metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrsDB[i].ID, ctrsDB[i].UserID, ctrsDB[i].CreatedTime)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		ctrMetrics = append(ctrMetrics, *metric)
+	// cek di docker swarm apakah semau ctr tadi stattusnya sekarang sudah running (di recover sama docker swarm)
+	// jika status di docker swawrm running update status container nya dan insert ctrLifecycle dg status RUN
+	for i, _ := range stoppedCtrs {
+		stoppedServiceID := stoppedCtrs[i].ServiceID
+		ctrFromDockerAPI, err := s.dockerAPI.Get(ctx, stoppedServiceID, &stoppedCtrs[i])
+		if err != nil {
+			zap.L().Debug("s.dockerAPI.Get (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.Error(err))
+			continue
+		}
+		if ctrFromDockerAPI.Status == domain.ServiceRun {
+			// kalau status container sekarang run berarti update status container & container lifecycle jadi run
+			recoveredContainer = append(recoveredContainer, &stoppedCtrs[i])
 
-// 	}
+			_, err := s.containerRepo.InsertLifecycle(ctx, &domain.ContainerLifecycle{
+				ContainerID: stoppedCtrs[i].ID,
+				StartTime:   time.Now(),
+				Status:      domain.ContainerStatusRUN,
+				Replica:     ctrFromDockerAPI.Replica,
+			}) // insert new ctr lifecycle dengan status RUN
+			if err != nil {
+				zap.L().Error("s.containerRepo.InsertLifecycle (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.Error(err))
+				return err
+			}
+		}
 
-// 	// batch insert container metrics untuk setiap container tadi
-// 	err = s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics)
-// 	if err != nil {
-// 		zap.L().Error("s.containerRepo.BatchInsertContainerMetrics(ctx, ctrMetrics) (SwarmServiceDownAccidentally) (ContainerService)")
-// 		return domain.WrapErrorf(err, domain.ErrInternalServerError, domain.MessageInternalServerError)
-// 	}
+	}
 
-// 	//  update batch  semua container tadi,  jadi stopped di tabel container
-// 	for i, _ := range ctrsDB {
-// 		ctrsDB[i].Status = domain.ServiceStopped
-// 	}
-	
-// 	err = s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)
-// 	if err != nil {
-// 		zap.L().Error("s.containerRepo.BatchUpdateContainer(ctx, ctrsDB)")
-// 		return err
-// 	}
+	err = s.containerRepo.BatchUpdateRunStatusContainer(ctx, recoveredContainer) // update status container jd run buat recovered container
+	if err != nil {
+		zap.L().Error("s.containerRepo.BatchUpdateRunStatusContainer (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.Error(err))
+		return err
+	}
 
-// 	// update lifecycle semua container tadi jadi stopped karena emang mati
-// 	err = s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)
-// 	if err != nil {
-// 		zap.L().Error("s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrsDB)")
-// 		return err
-// 	}
-// 	return nil
-// }
+	return nil
+
+}
 
 func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {
 	var recurse func(left int, right int)

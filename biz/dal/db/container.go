@@ -178,7 +178,7 @@ func (r *ContainerRepository) GetContainersDetail(ctx context.Context, serviceID
 	for _, ctr := range ctrs {
 
 		res = append(res, &domain.Container{
-			ID: ctr.ID.String(),
+			ID:             ctr.ID.String(),
 			UserID:         ctr.UserID.String(),
 			Status:         domain.ServiceStatus(ctr.Status),
 			Name:           ctr.Name,
@@ -228,13 +228,58 @@ func (r *ContainerRepository) BatchUpdateContainer(ctx context.Context, ctrs []*
 	}
 	batchUpdateParams.Column1 = serviceIDsParams
 	batchUpdateParams.Status = queries.ServiceStatus(domain.ServiceStopped)
-	err := q.BatchUpdateStatusContainer(ctx, batchUpdateParams)
+	err := q.BatchUpdateStatusContainer(ctx, batchUpdateParams) // query ini bisa dianggap bener karena update semua lifecycle container jd stopped, karena emang status terakhirnya stopped jadi ya update semua ctrLifecylce == stopped  utk ctrID == ctrs.....id udah ngeliatin itu
 	if err != nil {
 		zap.L().Error(" q.BatchUpdateStatusContainer (BatchUpdateContainer) (ContainerRepo)")
 		return err
 	}
 	return nil
 }
+
+
+func (r *ContainerRepository) BatchUpdateRunStatusContainer(ctx context.Context, ctrs []*domain.Container) error {
+	q := queries.New(r.db.Pool)
+
+	var batchUpdateParams queries.BatchUpdateStatusContainerParams
+	var serviceIDsParams []string
+
+	for i, _ := range ctrs {
+
+		serviceIDsParams = append(serviceIDsParams, ctrs[i].ServiceID)
+
+	}
+	batchUpdateParams.Column1 = serviceIDsParams
+	batchUpdateParams.Status = queries.ServiceStatus(domain.ServiceRun)
+	err := q.BatchUpdateStatusContainer(ctx, batchUpdateParams) // query ini bisa dianggap bener karena update semua lifecycle container jd stopped, karena emang status terakhirnya stopped jadi ya update semua ctrLifecylce == stopped  utk ctrID == ctrs.....id udah ngeliatin itu
+	if err != nil {
+		zap.L().Error(" q.BatchUpdateStatusContainer (BatchUpdateContainer) (ContainerRepo)")
+		return err
+	}
+	return nil
+}
+
+// func (r *ContainerRepository) BatchUpdateContainerLifecycleRunStatus(ctx context.Context, ctrs []*domain.Container) error {
+// 	q := queries.New(r.db.Pool)
+
+// 	var batchUpdateParams queries.BatchUpdateStatusContainerLifecycleParams
+// 	var ctrIDsParams []googleuuid.UUID
+
+// 	for i, _ := range ctrs {
+// 		ctrUUID, _ := uuid.FromString(ctrs[i].ID)
+// 		ctrIDsParams = append(ctrIDsParams, googleuuid.UUID(ctrUUID))
+// 	}
+
+// 	batchUpdateParams.Column1 = ctrIDsParams
+// 	batchUpdateParams.Status = queries.ContainerStatusSTOP
+// 	err := q.BatchUpdateStatusContainerLifecycle(ctx, batchUpdateParams)
+// 	if err != nil {
+// 		zap.L().Error("q.BatchUpdateStatusContainerLifecycle(ctx, batchUpdateParams) (BatchUpdateContainerLifecycle) (ContainerRepository)")
+// 		return err
+// 	}
+
+// 	return nil
+// }
+
 
 func (r *ContainerRepository) BatchUpdateContainerLifecycle(ctx context.Context, ctrs []*domain.Container) error {
 	q := queries.New(r.db.Pool)
@@ -315,6 +360,7 @@ func (r *ContainerRepository) InsertLifecycle(ctx context.Context, c *domain.Con
 	}
 	return res, nil
 }
+
 
 func (r *ContainerRepository) GetLifecycle(ctx context.Context, lifeId string) (*domain.ContainerLifecycle, error) {
 	q := queries.New(r.db.Pool)
@@ -398,6 +444,25 @@ func (r *ContainerRepository) InsertContainerMetrics(ctx context.Context, metric
 	return nil
 }
 
-func (r *ContainerRepository) GetContainersByIDS(ctx context.Context, serviceIDs string) {
+func (r *ContainerRepository) GetStoppedContainer(ctx context.Context) ([]domain.Container, error) {
+	q := queries.New(r.db.Pool)
 
+	stoppedCtrRows, err  := q.GetStoppedContainer(ctx, queries.ServiceStatusSTOPPED)
+	if err != nil {
+		zap.L().Error("q.GetStoppedContainer (GetStoppedContainer) (ContainerRepository)", zap.Error(err))
+		return []domain.Container{}, err 
+	}
+
+	var ctrs []domain.Container
+	for i, _ := range stoppedCtrRows {
+		ctrs = append(ctrs, domain.Container{
+			ID: stoppedCtrRows[i].ID.String(),
+			ServiceID: stoppedCtrRows[i].ServiceID,
+			Name: stoppedCtrRows[i].Name,
+		} )
+	}
+
+	return ctrs, nil 
 }
+
+

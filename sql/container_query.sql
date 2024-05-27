@@ -27,6 +27,10 @@ SELECT c.id, c.user_id, c.image, c.status, c.name, c.container_port, c.public_po
 	WHERE c.service_id = ANY($1::varchar[]);
 
 
+-- name: GetStoppedContainer :many
+SELECT c.id, c.service_id, c.name
+	FROM containers c
+	WHERE c.status = $1;
 
 -- name: InsertContainer :one
 INSERT INTO containers (
@@ -66,6 +70,8 @@ UPDATE container_lifecycles
 SET 
 	status=$2
 WHERE container_id = ANY($1::UUID[]);
+
+
 
 -- name: DeleteContainer :exec
 DELETE FROM containers

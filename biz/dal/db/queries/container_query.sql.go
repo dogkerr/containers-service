@@ -325,6 +325,38 @@ func (q *Queries) GetContainersByIDs(ctx context.Context, dollar_1 []string) ([]
 	return items, nil
 }
 
+const getStoppedContainer = `-- name: GetStoppedContainer :many
+SELECT c.id, c.service_id, c.name
+	FROM containers c
+	WHERE c.status = $1
+`
+
+type GetStoppedContainerRow struct {
+	ID        uuid.UUID
+	ServiceID string
+	Name      string
+}
+
+func (q *Queries) GetStoppedContainer(ctx context.Context, status ServiceStatus) ([]GetStoppedContainerRow, error) {
+	rows, err := q.db.Query(ctx, getStoppedContainer, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetStoppedContainerRow
+	for rows.Next() {
+		var i GetStoppedContainerRow
+		if err := rows.Scan(&i.ID, &i.ServiceID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertContainer = `-- name: InsertContainer :one
 INSERT INTO containers (
 	user_id, image, status, name, container_port, public_port, terminated_time, created_time, service_id

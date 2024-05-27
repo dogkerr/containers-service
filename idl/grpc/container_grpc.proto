@@ -21,11 +21,20 @@ message ContainerTerminatedAccidentallyRes {
     string message = 1;
 }
 
+message StopUserContainerCreditLimitReq {
+    string userID = 1;
+}
+
+message StopUserContainerCreditLimitRes {
+    string message = 1;
+}
 
 
 service ContainerGRPCService { 
     rpc Hello(HelloReq) returns (HelloResp);
     rpc ContainerTerminatedAccidentally(ContainerTerminatedAccidentallyReq) returns (ContainerTerminatedAccidentallyRes);
+    rpc StopContainerCreditLimit(StopUserContainerCreditLimitReq) returns (StopUserContainerCreditLimitRes);
 }
+
 
 

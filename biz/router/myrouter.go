@@ -37,7 +37,7 @@ type ContainerService interface {
 	CreateNewServiceAndUpload(ctx context.Context, d *domain.Container, imageFile *multipart.FileHeader,
 		imageName string) (string, time.Time, *domain.ContainerLifecycle, error)
 	GetUserContainersLoadTest(ctx context.Context, userID string, offset uint64, limit uint64) (*[]domain.Container, error)
-	// SwarmServiceDownAccidentally(ctx context.Context, serviceIDs []string) error
+	RecoverContainerAfterStoppedAccidentally(ctx context.Context) error
 }
 
 type ContainerHandler struct {
@@ -73,8 +73,8 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/scheduler/:id/start", handler.ScheduledStart)
 			ctrH.POST("/scheduler/create", handler.ScheduleCreate)
 			ctrH.POST("/scheduler/:id/terminate", handler.ScheduleTerminate)
-			// ctrH.POST("/cron/service/terminatedAccidentally", handler.terminatedAccidentally)
-			// ctrH.POST("/scheduler/:id/create", handler. ))
+			ctrH.POST("/cron/recoverContainer", handler.RecoverContainerAfterStoppedAccidentally)
+			// ctrH.POST("/cron/recoverContainer")
 
 			// load test
 			ctrH.GET("/loadtest", append(middleware.Protected(), handler.GetUserContainersLoadTest)...)
@@ -172,7 +172,7 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 type createServiceAndBuildImageReq struct {
 	Name string `form:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
 	// Image       string            `form:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
-	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
+	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 5UAdOZcjE3olCYbVtYQETU9Cyy01ac40k0U1OVtGX0 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
 	Env         []string              `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
 	Limit       domain.Resource       `form:"limit,required; msg:'resource limit harus anda isi '"`
 	Reservation domain.Resource       `form:"reservation,omitempty" `
@@ -619,6 +619,19 @@ func (m *ContainerHandler) GetUserContainersLoadTest(ctx context.Context, c *app
 
 type cronTerminatedAccidentallyReq struct {
 	ServiceIDs []string `json:"service_ids"`
+}
+
+type messageRes struct {
+	Message string `json:"message"`
+}
+
+func (m *ContainerHandler) RecoverContainerAfterStoppedAccidentally(ctx context.Context, c *app.RequestContext) {
+	err := m.svc.RecoverContainerAfterStoppedAccidentally(ctx)
+	if err != nil {
+		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, messageRes{"ok container recovered"})
 }
 
 // // TerminatedAccidentally
