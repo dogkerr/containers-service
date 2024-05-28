@@ -349,6 +349,7 @@ func (d *DockerEngineAPI) getLastReplica(ctx context.Context, ctrID string, last
 	return lastReplicaFromDB, nil
 }
 
+
 // Start
 // @Description misal awalnya stop(replica =0), tinggal get jumlah replica sebbelum stop , terus scale replicanya ke jumlah replica lama
 // misal kalo ternyata gak ada jumlah replica sebelum stop, query ke tabel containerlifecycle buat dapetin replica terakhir (sort by startTime descending)

@@ -563,7 +563,8 @@ func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.
 			zap.L().Debug("s.dockerAPI.Get (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.Error(err))
 			continue
 		}
-		zap.L().Info("latestLifeCycle (RecoverContainerAfterStoppedAccidentally) (ContainerService)")
+		zap.L().Info("latestLifeCycle (RecoverContainerAfterStoppedAccidentally) (ContainerService)", zap.String("lifecycleId", latestLifeCycle.ContainerID),
+			zap.String("stoppedSvcID", stoppedServiceLifecycleSvcID))
 
 		dateString := "0001-01-01T00:00:00Z"
 		dateNull, error := time.Parse("2006-01-02T00:00:00Z", dateString)
@@ -596,14 +597,16 @@ func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.
 			continue
 		}
 		// cek sekali lagi apakah masih stopped status containernya
-		stoppedCtr,err := s.containerRepo.Get(ctx, stoppedServiceID)
+		stoppedCtr, err := s.containerRepo.Get(ctx, stoppedServiceID)
 		if err != nil {
 			zap.L().Error("s.containerRepo.Get (RecoverContainerAfterStoppedAccidentally) (ContainerService) ", zap.Error(err))
-			return err 
+			return err
 		}
 		if ctrFromDockerAPI.Status == domain.ServiceRun && stoppedCtr.Status == domain.ServiceStopped {
 			// kalau status container sekarang run berarti update status container & container lifecycle jadi run
 			recoveredContainer = append(recoveredContainer, &stoppedCtrs[i])
+			zap.L().Info("latestLifeCycle (RecoverContainerAfterStoppedAccidentally) (ContainerService)",
+				zap.String("stoppedSvcID", stoppedServiceID))
 
 			// bugnya yang nambahin lifecycle sendiri itu disini cok
 			_, err := s.containerRepo.InsertLifecycle(ctx, &domain.ContainerLifecycle{
@@ -619,7 +622,6 @@ func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.
 		}
 
 		//
-
 	}
 
 	err = s.containerRepo.BatchUpdateRunStatusContainer(ctx, recoveredContainer) // update status container jd run buat recovered container

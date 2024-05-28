@@ -29,11 +29,19 @@ message StopUserContainerCreditLimitRes {
     string message = 1;
 }
 
+message GetContainerStatusReq {
+    string serviceID = 1;
+}
+
+message GetContainerStatusRes {
+    bool status =1;
+}
 
 service ContainerGRPCService { 
     rpc Hello(HelloReq) returns (HelloResp);
     rpc ContainerTerminatedAccidentally(ContainerTerminatedAccidentallyReq) returns (ContainerTerminatedAccidentallyRes);
     rpc StopContainerCreditLimit(StopUserContainerCreditLimitReq) returns (StopUserContainerCreditLimitRes);
+    rpc GetContainerStatus(GetContainerStatusReq) returns (GetContainerStatusRes);
 }
 
 

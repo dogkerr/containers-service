@@ -224,8 +224,8 @@ func (r *ContainerRepository) BatchUpdateContainer(ctx context.Context, ctrs []*
 	for i, _ := range ctrs {
 
 		serviceIDsParams = append(serviceIDsParams, ctrs[i].ServiceID)
-
 	}
+	
 	batchUpdateParams.Column1 = serviceIDsParams
 	batchUpdateParams.Status = queries.ServiceStatus(domain.ServiceStopped)
 	err := q.BatchUpdateStatusContainer(ctx, batchUpdateParams) // query ini bisa dianggap bener karena update semua lifecycle container jd stopped, karena emang status terakhirnya stopped jadi ya update semua ctrLifecylce == stopped  utk ctrID == ctrs.....id udah ngeliatin itu
