@@ -73,9 +73,8 @@ func main() {
 
 	h.Use(cors.New(cors.Config{
 		AllowAllOrigins: true,
-        AllowOrigins:     []string{"*"},
         AllowMethods:     []string{"PUT", "PATCH", "GET", "POST", "DELETE"},
-        AllowHeaders:     []string{"Origin"},
+        AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
         ExposeHeaders:    []string{"Content-Length"},
         AllowCredentials: true,
        
