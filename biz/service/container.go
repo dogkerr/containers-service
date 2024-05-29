@@ -171,6 +171,7 @@ func (s *ContainerService) GetUserContainers(ctx context.Context, userID string,
 	// get all user container di repo
 	userCtrsDb, err := s.containerRepo.GetAllUserContainers(ctx, userID)
 	if err != nil {
+		
 		return nil, err
 	}
 

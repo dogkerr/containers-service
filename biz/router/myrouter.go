@@ -49,16 +49,16 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 	handler := &ContainerHandler{
 		svc: c,
 	}
+// Access-Control-Allow-Origin
 	
-	
+	// taruh dibawah di sebelum protected, seteleah protected cors masih gakbisa
 	root := r.Group("/api/v1") // middleware.Cors()
 	{
-		root.GET("/lalala", append(middleware.Protected(), handler.SayHello)...)
 		ctrH := root.Group("/containers")
 		{
-			ctrH.POST("/", append(middleware.Protected(), handler.CreateContainer)...)
+			ctrH.POST("", append(middleware.Protected(), handler.CreateContainer)...)
 			ctrH.POST("/upload", append(middleware.Protected(), handler.CreateContainerAndBuildImage)...)
-			ctrH.GET("/", append(middleware.Protected(), handler.GetUsersContainer)...)
+			ctrH.GET("", append(middleware.Protected(), handler.GetUsersContainer)...)
 			ctrH.GET("/:id", append(middleware.Protected(), handler.GetContainer)...)
 			ctrH.POST("/:id/start", append(middleware.Protected(), handler.StartContainer)...)
 			// todo: post /:id/stop, delete /:id, put /:id, put /:id/scaleX
@@ -78,11 +78,12 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			// ctrH.POST("/cron/recoverContainer")
 
 			// load test
-			ctrH.GET("/loadtest", append(middleware.Protected(), handler.GetUserContainersLoadTest)...)
+			// ctrH.GET("/loadtest", append(middleware.Protected(), handler.GetUserContainersLoadTest)...)
 
 		}
 	}
 }
+
 
 // ResponseError model info
 // @Description error message
@@ -123,6 +124,7 @@ type createContainerResp struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestContext) {
+	
 	var req createServiceReq
 
 	err := c.Bind(&req)
@@ -184,7 +186,9 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 			ContainerLifecycles: []domain.ContainerLifecycle{*ctrLife},
 		},
 	}
-	c.JSON(http.StatusOK, resp)
+	c.JSON(consts.StatusOK, resp)
+
+	
 }
 
 // createServiceAndBuildImageReq model info
@@ -214,6 +218,8 @@ type createServiceAndBuildImageReq struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) CreateContainerAndBuildImage(ctx context.Context, c *app.RequestContext) {
+	
+
 	userId, _ := c.Get("userID")
 	var req createServiceAndBuildImageReq
 	err := c.BindForm(&req)
@@ -271,7 +277,9 @@ func (m *ContainerHandler) CreateContainerAndBuildImage(ctx context.Context, c *
 		},
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.JSON(consts.StatusOK, resp)
+
+	
 }
 
 type Pagination struct {
@@ -296,6 +304,7 @@ type getUserContainersResp struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) GetUsersContainer(ctx context.Context, c *app.RequestContext) {
+	
 	userId, _ := c.Get("userID")
 
 	var req Pagination
@@ -309,7 +318,8 @@ func (m *ContainerHandler) GetUsersContainer(ctx context.Context, c *app.Request
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, getUserContainersResp{resp})
+	c.JSON(consts.StatusOK, getUserContainersResp{resp})
+	
 }
 
 type getContainerReq struct {
@@ -334,6 +344,7 @@ type getContainerRes struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestContext) {
+	
 	userId, _ := c.Get("userID")
 	var req getContainerReq
 	err := c.BindAndValidate(&req)
@@ -347,7 +358,8 @@ func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestConte
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, getContainerRes{resp})
+	c.JSON(consts.StatusOK, getContainerRes{resp})
+	
 }
 
 // StartContainer
@@ -362,6 +374,7 @@ func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestConte
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestContext) {
+	
 	userID, _ := c.Get("userID")
 	var req getContainerReq
 	err := c.BindAndValidate(&req)
@@ -375,7 +388,8 @@ func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestCon
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, getContainerRes{resp})
+	c.JSON(consts.StatusOK, getContainerRes{resp})
+	
 }
 
 // deleteRes model info
@@ -396,6 +410,7 @@ type deleteRes struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestContext) {
+	
 	userID, _ := c.Get("userID")
 	var req getContainerReq
 	err := c.BindAndValidate(&req)
@@ -408,7 +423,8 @@ func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestCont
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully stopped", req.ID)})
+	c.JSON(consts.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully stopped", req.ID)})
+	
 }
 
 // DeleteContainer
@@ -423,6 +439,7 @@ func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestCont
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) DeleteContainer(ctx context.Context, c *app.RequestContext) {
+	
 	userID, _ := c.Get("userID")
 	var req getContainerReq
 	err := c.BindAndValidate(&req)
@@ -435,7 +452,8 @@ func (m *ContainerHandler) DeleteContainer(ctx context.Context, c *app.RequestCo
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully deleted", req.ID)})
+	c.JSON(consts.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully deleted", req.ID)})
+	
 }
 
 // updateRes model info
@@ -458,6 +476,7 @@ type updateRes struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) UpdateContainer(ctx context.Context, c *app.RequestContext) {
+	
 	userID, _ := c.Get("userID")
 	var req createServiceReq // req body
 
@@ -490,7 +509,8 @@ func (m *ContainerHandler) UpdateContainer(ctx context.Context, c *app.RequestCo
 		return
 	}
 
-	c.JSON(http.StatusOK, updateRes{Message: fmt.Sprintf("container %s successfully updated", ctrID)})
+	c.JSON(consts.StatusOK, updateRes{Message: fmt.Sprintf("container %s successfully updated", ctrID)})
+	
 }
 
 // scaleReq model info
@@ -512,6 +532,7 @@ type scaleReq struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) ScaleX(ctx context.Context, c *app.RequestContext) {
+	
 	userID, _ := c.Get("userID")
 	var req getContainerReq
 	err := c.BindAndValidate(&req)
@@ -532,7 +553,8 @@ func (m *ContainerHandler) ScaleX(ctx context.Context, c *app.RequestContext) {
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, updateRes{Message: fmt.Sprintf("container %s successfully scaled", req.ID)})
+	c.JSON(consts.StatusOK, updateRes{Message: fmt.Sprintf("container %s successfully scaled", req.ID)})
+	
 }
 
 type HelloReq struct {
@@ -547,6 +569,7 @@ type scheduledActionReq struct {
 // ScheduledStop -.
 // @Description yg di hit dkron buat stop container (scheduled job)
 func (m *ContainerHandler) ScheduledStop(ctx context.Context, c *app.RequestContext) {
+	
 	var req scheduledActionReq
 	err := c.BindAndValidate(&req)
 	if err != nil {
@@ -560,10 +583,12 @@ func (m *ContainerHandler) ScheduledStop(ctx context.Context, c *app.RequestCont
 		return
 	}
 
-	c.JSON(http.StatusOK, "ok")
+	c.JSON(consts.StatusOK, "ok")
+	
 }
 
 func (m *ContainerHandler) ScheduledStart(ctx context.Context, c *app.RequestContext) {
+	
 	var req scheduledActionReq
 	err := c.BindAndValidate(&req)
 	if err != nil {
@@ -575,7 +600,8 @@ func (m *ContainerHandler) ScheduledStart(ctx context.Context, c *app.RequestCon
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, "container started")
+	c.JSON(consts.StatusOK, "container started")
+	
 }
 
 type scheduleCreateServiceReq struct {
@@ -591,6 +617,7 @@ type scheduleCreateServiceReq struct {
 }
 
 func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestContext) {
+	
 	var req scheduleCreateServiceReq
 	err := c.BindAndValidate(&req)
 	if err != nil {
@@ -627,10 +654,13 @@ func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestCon
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, "ok")
+	c.JSON(consts.StatusOK, "ok")
+	
+
 }
 
 func (m *ContainerHandler) ScheduleTerminate(ctx context.Context, c *app.RequestContext) {
+	
 	var req scheduledActionReq
 	err := c.BindAndValidate(&req)
 	if err != nil {
@@ -644,7 +674,8 @@ func (m *ContainerHandler) ScheduleTerminate(ctx context.Context, c *app.Request
 		return
 	}
 
-	c.JSON(http.StatusOK, "ok")
+	c.JSON(consts.StatusOK, "ok")
+	
 }
 
 // scheduleContainerReq model info
@@ -670,6 +701,7 @@ type scheduleContainerReq struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) ScheduleContainer(ctx context.Context, c *app.RequestContext) {
+	
 	userID, _ := c.Get("userID")
 
 	var req scheduleContainerReq
@@ -684,7 +716,8 @@ func (m *ContainerHandler) ScheduleContainer(ctx context.Context, c *app.Request
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s for container %s scheduled in %d %s", req.Action, req.ID, req.ScheduledTIme, req.TimeFormat)})
+	c.JSON(consts.StatusOK, deleteRes{fmt.Sprintf("action %s for container %s scheduled in %d %s", req.Action, req.ID, req.ScheduledTIme, req.TimeFormat)})
+	
 }
 
 // scheduleCreateReq model info
@@ -709,6 +742,7 @@ type scheduleCreateReq struct {
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
 func (m *ContainerHandler) CreateScheduledCreate(ctx context.Context, c *app.RequestContext) {
+	
 	userID, _ := c.Get("userID")
 
 	var req scheduleCreateReq
@@ -742,7 +776,8 @@ func (m *ContainerHandler) CreateScheduledCreate(ctx context.Context, c *app.Req
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s scheduled in %d %s", req.Action, req.ScheduledTIme, req.TimeFormat)})
+	c.JSON(consts.StatusOK, deleteRes{fmt.Sprintf("action %s scheduled in %d %s", req.Action, req.ScheduledTIme, req.TimeFormat)})
+	
 }
 
 func (m *ContainerHandler) GetUserContainersLoadTest(ctx context.Context, c *app.RequestContext) {
@@ -759,7 +794,9 @@ func (m *ContainerHandler) GetUserContainersLoadTest(ctx context.Context, c *app
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, getUserContainersResp{resp})
+	c.JSON(consts.StatusOK, getUserContainersResp{resp})
+	
+
 }
 
 type cronTerminatedAccidentallyReq struct {
@@ -776,7 +813,7 @@ type messageRes struct {
 // 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
 // 		return
 // 	}
-// 	c.JSON(http.StatusOK, messageRes{"ok container recovered"})
+// 	c.JSON(consts.StatusOK, messageRes{"ok container recovered"})
 // }
 
 // // TerminatedAccidentally
@@ -797,7 +834,7 @@ type messageRes struct {
 
 // 		// kalau emang ada
 // 	}
-// 	c.JSON(http.StatusOK, "ok")
+// 	c.JSON(consts.StatusOK, "ok")
 // }
 
 func (m *ContainerHandler) SayHello(ctx context.Context, c *app.RequestContext) {
@@ -811,12 +848,13 @@ func (m *ContainerHandler) SayHello(ctx context.Context, c *app.RequestContext) 
 
 	resp := new(hello.HelloResp)
 	resp.RespBody = "halo " + req.Name
-	c.JSON(http.StatusOK, resp)
+	c.JSON(consts.StatusOK, resp)
+
 }
 
 func getStatusCode(err error) int {
 	if err == nil {
-		return http.StatusOK
+		return consts.StatusOK
 	}
 	var ierr *domain.Error
 	if !errors.As(err, &ierr) {

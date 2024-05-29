@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"dogker/lintang/container-service/biz/dal"
 	"dogker/lintang/container-service/biz/router"
 	"dogker/lintang/container-service/config"
@@ -17,7 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/cloudwego/hertz/pkg/route"
@@ -25,31 +23,17 @@ import (
 	"github.com/cloudwego/kitex/pkg/transmeta"
 	kitexServer "github.com/cloudwego/kitex/server"
 
+	"github.com/hertz-contrib/cors"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/cloudwego/hertz/pkg/common/adaptor"
 	"go.uber.org/zap"
 
-	"github.com/hertz-contrib/swagger" // hertz-swagger middleware
-	"github.com/rs/cors"
+	"github.com/hertz-contrib/swagger"     // hertz-swagger middleware
 	swaggerFiles "github.com/swaggo/files" // swagger embed files
 	// hertz-swagger middleware
 	// swagger embed files
 )
 
-func Cors() app.HandlerFunc {
-	return func(ctx context.Context, c *app.RequestContext) {
-		c.Response.Header.Set("Access-Control-Allow-Origin", "*")
-		c.Response.Header.Set("Access-Control-Allow-Credentials", "true")
-		c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Response.Header.Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
-		if string(c.GetRequest().Method()) == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next(ctx)
-	}
-}
 
 // @title go-container-service-lintang
 // @version 1.0
@@ -86,65 +70,24 @@ func main() {
 	// validation error custom
 	customValidationErr := pkg.CreateCustomValidationError()
 
-	h := server.Default(server.WithValidateConfig(customValidationErr), server.WithExitWaitTime(4*time.Second))
+	h := server.Default(server.WithValidateConfig(customValidationErr), server.WithExitWaitTime(4*time.Second), server.WithRedirectTrailingSlash(false))
+	// h.Use(Cors())
 
 	h.Use(pkg.AccessLog())
-	// h.Use(cors.Default())
-	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization", "Origin", "Content-Length"},
+
+
+	corsHandler := cors.New(cors.Config{
+		AllowAllOrigins:  true,
+		AllowMethods:     []string{"PUT", "PATCH", "GET", "POST", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "content-type", "authorization", "Accept", "User-Agent", "Cache-Control", "Pragma"},
+		ExposeHeaders:    []string{"Origin", "content-type", "authorization", "Accept", "User-Agent", "Cache-Control", "Pragma"},
 		AllowCredentials: true,
-	})
 
-	h.Use(func(ctx context.Context, c *app.RequestContext) {
-		req, err := adaptor.GetCompatRequest(&c.Request)
-		if err != nil {
-			zap.L().Error("adaptor.GetCompatRequest", zap.Error(err))
-			return
-		}
-		rw := adaptor.GetCompatResponseWriter(&c.Response)
+		MaxAge: 12 * time.Hour,
+	}) // ini gakbisa cok
 
-		corsHandler.HandlerFunc(rw, req)
-		c.Next(ctx)
-	})
-	h.Use(Cors())
-
-	// cors.New(cors.Config{
-	// 	AllowAllOrigins:  true,
-	// 	AllowMethods:     []string{"PUT", "PATCH", "GET", "POST", "DELETE", "OPTIONS"},
-	// 	AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "User-Agent", "Cache-Control", "Pragma"},
-	// 	ExposeHeaders:    []string{"Origin", "Content-Type", "Authorization", "Accept", "User-Agent", "Cache-Control", "Pragma"},
-	// 	AllowCredentials: true,
-
-	// 	MaxAge: 12 * time.Hour,
-	// }) // ini gakbisa cok
-
-	// config := cors.DefaultConfig()
-	// config.AllowAllOrigins = true
-	// config.AllowHeaders = append(config.AllowHeaders, "authorization")
-
-	// config := cors.DefaultConfig()
-	// config.AllowAllOrigins = true // gakbisa
-	// config.AllowHeaders = append(config.AllowHeaders, "Authorization")
-	// h.Use(cors.New(config))
-	// yang atas gabisa semua
-	// corsinst := cors.New(cors.Options{
-	// 	AllowedOrigins:   []string{"*"}, // Mengizinkan semua origin
-	// 	AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-	// 	AllowedHeaders:   []string{"Origin", "Content-Type", "Accept", "Authorization", "authorization", "Content-Length"},
-	// 	AllowCredentials: true,
-	// })
-	// cors.Default().Handler()
-
-	// cors.Default().Handler(	cors)
-	// cors.Default().Handler()
-	// h.Use(func(ctx context.Context, c *app.RequestContext) {
-	// 	corsinst.HandlerFunc(c.Response.wr, c.Request)
-	// 	c.Next(ctx)
-
-	// })
-
+	h.Use(corsHandler)
+	
 	var callback []route.CtxCallback
 	callback = append(callback, rmq.Close, pg.ClosePostgres)
 	h.Engine.OnShutdown = append(h.Engine.OnShutdown, callback...) /// graceful shutdown
