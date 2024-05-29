@@ -49,8 +49,9 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 	handler := &ContainerHandler{
 		svc: c,
 	}
-
-	root := r.Group("/api/v1", middleware.Cors())
+	
+	
+	root := r.Group("/api/v1") // middleware.Cors()
 	{
 		root.GET("/lalala", append(middleware.Protected(), handler.SayHello)...)
 		ctrH := root.Group("/containers")
@@ -321,7 +322,6 @@ type getContainerRes struct {
 	Container *domain.Container `json:"container"`
 }
 
-
 // GetContainer
 // @Summary Mendapatkan swarm service user berdasarkan id
 // @Description  Mendapatkan swarm service user berdasarkan id
@@ -349,7 +349,6 @@ func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestConte
 	}
 	c.JSON(http.StatusOK, getContainerRes{resp})
 }
-
 
 // StartContainer
 // @Summary run container user
@@ -379,12 +378,11 @@ func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestCon
 	c.JSON(http.StatusOK, getContainerRes{resp})
 }
 
-// deleteRes model info 
+// deleteRes model info
 // @Description response body yg isinnya message success doang
 type deleteRes struct {
 	Message string `json:"message"`
 }
-
 
 // StopContainer
 // @Summary stop container user
@@ -412,7 +410,6 @@ func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestCont
 	}
 	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully stopped", req.ID)})
 }
-
 
 // DeleteContainer
 // @Summary delete user swarm service
@@ -451,7 +448,7 @@ type updateRes struct {
 // @Summary update swarm service user (bisa juga vertical scaling disini)
 // @Description update swarm service user (bisa juga vertical scaling disini)
 // @Param id path string true "container id"
-// @Param body body createServiceReq true "request body update container" 
+// @Param body body createServiceReq true "request body update container"
 // @Tags containers
 // @Accept application/json
 // @Produce application/json
@@ -501,7 +498,6 @@ func (m *ContainerHandler) UpdateContainer(ctx context.Context, c *app.RequestCo
 type scaleReq struct {
 	Replica uint64 `json:"replica" vd:"$<=1000 && $>=0; msg:'replica harus di antara range 0-1000'"`
 }
-
 
 // ScaleX
 // @Summary horizontal scaling container user
@@ -594,7 +590,6 @@ type scheduleCreateServiceReq struct {
 	UserID      string            `json:"user_id" vd:"len($)<100 && regexp('^[\\w\\-]*$'); msg:'user_id harus alphanumeric dan simbol -/_'"`
 }
 
-
 func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestContext) {
 	var req scheduleCreateServiceReq
 	err := c.BindAndValidate(&req)
@@ -656,17 +651,16 @@ func (m *ContainerHandler) ScheduleTerminate(ctx context.Context, c *app.Request
 // @Description request body menjadwalkan start/stop/terminate container
 type scheduleContainerReq struct {
 	ID            string                 `path:"id" vd:"len($)<400 regexp('^[\\w\\-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'" binding:"required"`
-	Action        domain.ContainerAction `json:"action" vd:"in($ , 'START', 'STOP', 'TERMINATE'); msg:'action harus dari pilihan berikut=START, STOPPED, TERMINATE '"  binding:"required"` 
+	Action        domain.ContainerAction `json:"action" vd:"in($ , 'START', 'STOP', 'TERMINATE'); msg:'action harus dari pilihan berikut=START, STOPPED, TERMINATE '"  binding:"required"`
 	ScheduledTIme uint64                 `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"  binding:"required"`
 	TimeFormat    domain.TimeFormat      `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"  binding:"required"`
 }
-
 
 // ScheduleContainer
 // @Summary menjadwalkan start/stop/terminate container
 // @Description menjadwalkan start/stop/terminate container
 // @Param id path string true "container id"
-// @Param body body scheduleContainerReq true "request body penjadwalan start/stop/terminate container" 
+// @Param body body scheduleContainerReq true "request body penjadwalan start/stop/terminate container"
 // @Tags containers
 // @Accept application/json
 // @Produce application/json
@@ -702,11 +696,10 @@ type scheduleCreateReq struct {
 	ContainerReq  scheduleCreateServiceReq `json:"container" vd:" msg:'container wajib anda isi'" binding:"required"`
 }
 
-
 // CreateScheduledCreate
 // @Summary menjadwalkan pembuatan container
 // @Description menjadwalkan pembuatan container
-// @Param body body scheduleCreateReq true "request body penjadwalan pembuatan container" 
+// @Param body body scheduleCreateReq true "request body penjadwalan pembuatan container"
 // @Tags containers
 // @Accept application/json
 // @Produce application/json
