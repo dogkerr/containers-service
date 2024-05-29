@@ -77,9 +77,12 @@ func main() {
 	opts = append(opts, kitexServer.WithMetaHandler(transmeta.ServerHTTP2Handler))
 	opts = append(opts, kitexServer.WithServiceAddr(addr))
 	opts = append(opts, kitexServer.WithExitWaitTime(5*time.Second))
-	opts = append(opts, kitexServer.WithGRPCReadBufferSize(64000000))
+	opts = append(opts, kitexServer.WithGRPCReadBufferSize(1024 * 1024 * 100))
 
-	opts = append(opts, kitexServer.WithGRPCWriteBufferSize(64000000))
+	opts = append(opts, kitexServer.WithGRPCWriteBufferSize(1024 * 1024 * 100))
+	opts = append(opts, kitexServer.WithGRPCInitialConnWindowSize(1024 * 1024 * 100))
+	opts = append(opts, kitexServer.WithGRPCInitialWindowSize(1024 * 1024 * 100))
+	opts = append(opts, kitexServer.WithGRPCMaxHeaderListSize(1024 * 1024 * 100))
 
 	cGrpcSvc := di.InitContainerGRPCService(pg, rmq, cfg, cc)
 	srv := containergrpcservice.NewServer(cGrpcSvc, opts...)
