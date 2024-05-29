@@ -67,13 +67,16 @@ type Container struct {
 	// from docker
 	Available uint64 `json:"replica_available,omitempty"`
 }
+
+// Endpoint model info
+// @Description port container
 type Endpoint struct {
 	TargetPort    uint32 `json:"target_port,required" vd:"$<65555 && $>0; msg:'port harus diantara range 0-65555'"`
 	PublishedPort uint64 `json:"published_port,required" vd:"$<65555 && $>0; msg:'port harus diantara range 0-65555'"`
 	Protocol      string `json:"protocol" default:"tcp" vd:"in($, 'tcp','udp','sctp'); msg:'protocol harus tcp/udp/sctp'" `
 }
 
-// Resource
+// Resource model info
 // @Description ini resource cpus & memory buat setiap container nya
 type Resource struct {
 	// cpu dalam milicpu (1000 cpus = 1 vcpu)

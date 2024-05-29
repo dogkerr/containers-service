@@ -73,7 +73,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 			ctrH.POST("/scheduler/:id/start", handler.ScheduledStart)
 			ctrH.POST("/scheduler/create", handler.ScheduleCreate)
 			ctrH.POST("/scheduler/:id/terminate", handler.ScheduleTerminate)
-			ctrH.POST("/cron/recoverContainer", handler.RecoverContainerAfterStoppedAccidentally)
+			// ctrH.POST("/cron/recoverContainer", handler.RecoverContainerAfterStoppedAccidentally)
 			// ctrH.POST("/cron/recoverContainer")
 
 			// load test
@@ -83,27 +83,44 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 	}
 }
 
-// ResponseError represent the response error struct
+// ResponseError model info
+// @Description error message
 type ResponseError struct {
 	Message string `json:"message"`
 }
 
+// createServiceReq model info
+// @Description request body untuk membuat container
 type createServiceReq struct {
-	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
-	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$'); msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'"`
-	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
+	Name        string            `json:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'" binding:"required"`
+	Image       string            `json:"image,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$'); msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'" binding:"required"`
+	Labels      map[string]string `json:"labels,omitempty" vd:"range($, len(#k) < 50 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '" `
 	Env         []string          `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
-	Limit       domain.Resource   `json:"limit,required; msg:'resource limit harus anda isi '"`
+	Limit       domain.Resource   `json:"limit,required; msg:'resource limit harus anda isi '" binding:"required"`
 	Reservation domain.Resource   `json:"reservation,omitempty" `
-	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
-	Endpoint    []domain.Endpoint `json:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'"`
+	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'" binding:"required"`
+	Endpoint    []domain.Endpoint `json:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'" binding:"required"`
 }
 
+// createContainerResp model info
+// @Description response body endpoint membuat container
 type createContainerResp struct {
 	Message   string           `json:"message"`
 	Container domain.Container `json:"container"`
 }
 
+// CreateContainer
+// @Summary  User Membuat swarm service lewat endpoint inieperti pada postman (bearer access token saja
+// @Description  User Membuat swarm service lewat endpoint ini
+// @Tags containers
+// @Param body body createServiceReq true "request body membuat container"
+// @Accept application/json
+// @Produce application/json
+// @Router /containers [post]
+// @Security Authorization
+// @Success 200 {object} createContainerResp
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestContext) {
 	var req createServiceReq
 
@@ -169,19 +186,32 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 	c.JSON(http.StatusOK, resp)
 }
 
+// createServiceAndBuildImageReq model info
+// @Description request body untuk membuat container dan upload file  source code tarfile
 type createServiceAndBuildImageReq struct {
-	Name string `form:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'"`
-	// Image       string            `form:"image,required" vd:"len($)<100 && regexp('^[a-zA-Z0-9/_:-]*$'); msg:'image harus alphanumeric atau simbol -,_,:,/'"`
-	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 5UAdOZcjE3olCYbVtYQETU9Cyy01ac40k0U1OVtGX0 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '"`
-	Env         []string              `json:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'"`
-	Limit       domain.Resource       `form:"limit,required; msg:'resource limit harus anda isi '"`
-	Reservation domain.Resource       `form:"reservation,omitempty" `
-	Replica     int64                 `form:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'"`
-	Endpoint    []domain.Endpoint     `form:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'""`
-	ImageTar    *multipart.FileHeader `form:"image,required" vd:"msg:'endpoint wajib diisi'"`
-	ImageName   string                `form:"imageName,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$');  msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'"`
+	Name        string                `form:"name,required" vd:"len($)<100 && regexp('^[\\w\\-\\.]*$'); msg:'nama harus alphanumeric atau boleh juga simbol -,_,. dan tidak boleh ada spasi'" binding:"required"`
+	Labels      map[string]string     `form:"labels,omitempty" vd:"range($, len(#k) < 5UAdOZcjE3olCYbVtYQETU9Cyy01ac40k0U1OVtGX0 && len(#v) < 50) ; msg:'label haruslah kurang dari 50 '" swaggerignore:"true"`
+	Env         []string              `form:"env" vd:"  range($, regexp('^([A-Z0-9\\_]*)=([A-Za-z0-9\\_\\/\\:\\@\\?\\(\\)\\'\\.\\=]*)$', #v) ); msg:'env harus dalam format KEY=VALUE dengan semua huruf kapital'" `
+	Limit       domain.Resource       `form:"limit,required" binding:"required" swaggerignore:"true"`
+	Reservation domain.Resource       `form:"reservation,omitempty"  swaggerignore:"true"`
+	Replica     int64                 `form:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'" binding:"required"`
+	Endpoint    []domain.Endpoint     `form:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'" binding:"required"`
+	ImageTar    *multipart.FileHeader `form:"image,required" vd:"msg:'endpoint wajib diisi'" binding:"required" swaggerignore:"true"`
+	ImageName   string                `form:"imageName,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$');  msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'" binding:"required"`
 }
 
+// CreateContainerAndUpload
+// @Summary  User Membuat swarm service tetapi source code (tarfile) nya dia upload ,lewat endpoint inieperti pada postman (bearer access token saja
+// @Description  User Membuat swarm service tetapi source code (tarfile) nya dia upload  lewat endpoint ini
+// @Tags containers
+// @Param body formData createServiceAndBuildImageReq true "request body membuat container dengan tarfile source code "
+// @Accept application/json
+// @Produce application/json
+// @Router /containers/upload [post]
+// @Security Authorization
+// @Success 200 {object} createContainerResp
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) CreateContainerAndBuildImage(ctx context.Context, c *app.RequestContext) {
 	userId, _ := c.Get("userID")
 	var req createServiceAndBuildImageReq
@@ -248,10 +278,22 @@ type Pagination struct {
 	Limit  uint64 `query:"limit" vd:"$<100; msg:'limit tidak boleh lebih dari 100'"`
 }
 
+// getUserContainersResp model info
+// @Description response GetUsersContainer
 type getUserContainersResp struct {
 	Containers *[]domain.Container `json:"containers"`
 }
 
+// GetUsersContainer
+// @Summary Mendapatkan semua swarm service milik user
+// @Description  Mendapatkan semua swarm service milik user
+// @Tags containers
+// @Produce application/json
+// @Router /containers [get]
+// @Security Authorization
+// @Success 200 {object} getUserContainersResp
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) GetUsersContainer(ctx context.Context, c *app.RequestContext) {
 	userId, _ := c.Get("userID")
 
@@ -273,10 +315,24 @@ type getContainerReq struct {
 	ID string `path:"id" vd:"len($)<400 regexp('^[\\w\\-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
 }
 
+// getContainerRes model info
+// @Description mendapatkan container user berdasarkan id container
 type getContainerRes struct {
 	Container *domain.Container `json:"container"`
 }
 
+
+// GetContainer
+// @Summary Mendapatkan swarm service user berdasarkan id
+// @Description  Mendapatkan swarm service user berdasarkan id
+// @Param id path string true "container id"
+// @Tags containers
+// @Produce application/json
+// @Router /containers/{id} [get]
+// @Security Authorization
+// @Success 200 {object} getContainerRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestContext) {
 	userId, _ := c.Get("userID")
 	var req getContainerReq
@@ -294,6 +350,18 @@ func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestConte
 	c.JSON(http.StatusOK, getContainerRes{resp})
 }
 
+
+// StartContainer
+// @Summary run container user
+// @Description run container user
+// @Param id path string true "container id"
+// @Tags containers
+// @Produce application/json
+// @Router /containers/{id}/start [post]
+// @Security Authorization
+// @Success 200 {object} getContainerRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestContext) {
 	userID, _ := c.Get("userID")
 	var req getContainerReq
@@ -311,10 +379,24 @@ func (m *ContainerHandler) StartContainer(ctx context.Context, c *app.RequestCon
 	c.JSON(http.StatusOK, getContainerRes{resp})
 }
 
+// deleteRes model info 
+// @Description response body yg isinnya message success doang
 type deleteRes struct {
 	Message string `json:"message"`
 }
 
+
+// StopContainer
+// @Summary stop container user
+// @Description stop container user
+// @Param id path string true "container id"
+// @Tags containers
+// @Produce application/json
+// @Router /containers/{id}/stop [post]
+// @Security Authorization
+// @Success 200 {object} deleteRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestContext) {
 	userID, _ := c.Get("userID")
 	var req getContainerReq
@@ -331,6 +413,18 @@ func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestCont
 	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully stopped", req.ID)})
 }
 
+
+// DeleteContainer
+// @Summary delete user swarm service
+// @Description delete user swarm service
+// @Param id path string true "container id"
+// @Tags containers
+// @Produce application/json
+// @Router /containers/{id} [delete]
+// @Security Authorization
+// @Success 200 {object} deleteRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) DeleteContainer(ctx context.Context, c *app.RequestContext) {
 	userID, _ := c.Get("userID")
 	var req getContainerReq
@@ -347,12 +441,25 @@ func (m *ContainerHandler) DeleteContainer(ctx context.Context, c *app.RequestCo
 	c.JSON(http.StatusOK, deleteRes{Message: fmt.Sprintf("container %s successfully deleted", req.ID)})
 }
 
+// updateRes model info
+// @Description response body isinya message success doang
 type updateRes struct {
 	Message string `json:"message"`
 }
 
 // UpdateContainer
-// @Description update container , tapi cuma update field yg ada di createServiceReq
+// @Summary update swarm service user (bisa juga vertical scaling disini)
+// @Description update swarm service user (bisa juga vertical scaling disini)
+// @Param id path string true "container id"
+// @Param body body createServiceReq true "request body update container" 
+// @Tags containers
+// @Accept application/json
+// @Produce application/json
+// @Router /containers/{id} [put]
+// @Security Authorization
+// @Success 200 {object} updateRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) UpdateContainer(ctx context.Context, c *app.RequestContext) {
 	userID, _ := c.Get("userID")
 	var req createServiceReq // req body
@@ -389,12 +496,25 @@ func (m *ContainerHandler) UpdateContainer(ctx context.Context, c *app.RequestCo
 	c.JSON(http.StatusOK, updateRes{Message: fmt.Sprintf("container %s successfully updated", ctrID)})
 }
 
+// scaleReq model info
+// @Description request body horizontal scaling
 type scaleReq struct {
 	Replica uint64 `json:"replica" vd:"$<=1000 && $>=0; msg:'replica harus di antara range 0-1000'"`
 }
 
+
 // ScaleX
-// @Description horizontal scaling sawrm service/container
+// @Summary horizontal scaling container user
+// @Description horizontal scaling container user
+// @Param id path string true "container id"
+// @Param body body scaleReq true "request body horizontal scaling"
+// @Tags containers
+// @Produce application/json
+// @Router /containers/{id}/scale [put]
+// @Security Authorization
+// @Success 200 {object} updateRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) ScaleX(ctx context.Context, c *app.RequestContext) {
 	userID, _ := c.Get("userID")
 	var req getContainerReq
@@ -474,6 +594,7 @@ type scheduleCreateServiceReq struct {
 	UserID      string            `json:"user_id" vd:"len($)<100 && regexp('^[\\w\\-]*$'); msg:'user_id harus alphanumeric dan simbol -/_'"`
 }
 
+
 func (m *ContainerHandler) ScheduleCreate(ctx context.Context, c *app.RequestContext) {
 	var req scheduleCreateServiceReq
 	err := c.BindAndValidate(&req)
@@ -531,13 +652,28 @@ func (m *ContainerHandler) ScheduleTerminate(ctx context.Context, c *app.Request
 	c.JSON(http.StatusOK, "ok")
 }
 
+// scheduleContainerReq model info
+// @Description request body menjadwalkan start/stop/terminate container
 type scheduleContainerReq struct {
-	ID            string                 `path:"id" vd:"len($)<400 regexp('^[\\w\\-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'"`
-	Action        domain.ContainerAction `json:"action" vd:"in($ , 'START', 'STOP', 'TERMINATE'); msg:'action harus dari pilihan berikut=START, STOPPED, TERMINATE '"`
-	ScheduledTIme uint64                 `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"`
-	TimeFormat    domain.TimeFormat      `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"`
+	ID            string                 `path:"id" vd:"len($)<400 regexp('^[\\w\\-]*$'); msg:'id hanya boleh alphanumeric dan simbol -'" binding:"required"`
+	Action        domain.ContainerAction `json:"action" vd:"in($ , 'START', 'STOP', 'TERMINATE'); msg:'action harus dari pilihan berikut=START, STOPPED, TERMINATE '"  binding:"required"` 
+	ScheduledTIme uint64                 `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"  binding:"required"`
+	TimeFormat    domain.TimeFormat      `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"  binding:"required"`
 }
 
+
+// ScheduleContainer
+// @Summary menjadwalkan start/stop/terminate container
+// @Description menjadwalkan start/stop/terminate container
+// @Param body body scheduleContainerReq true "request body penjadwalan start/stop/terminate container" 
+// @Tags containers
+// @Accept application/json
+// @Produce application/json
+// @Router /{id}/schedule [post]
+// @Security Authorization
+// @Success 200 {object} deleteRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) ScheduleContainer(ctx context.Context, c *app.RequestContext) {
 	userID, _ := c.Get("userID")
 
@@ -556,13 +692,28 @@ func (m *ContainerHandler) ScheduleContainer(ctx context.Context, c *app.Request
 	c.JSON(http.StatusOK, deleteRes{fmt.Sprintf("action %s for container %s scheduled in %d %s", req.Action, req.ID, req.ScheduledTIme, req.TimeFormat)})
 }
 
+// scheduleCreateReq model info
+// @Description request body penjadwalan pembuatan container
 type scheduleCreateReq struct {
-	Action        domain.ContainerAction   `json:"action" vd:"$=='CREATE'; msg:'action harus dari pilihan berikut=CREATE'"`
-	ScheduledTIme uint64                   `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'"`
-	TimeFormat    domain.TimeFormat        `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')"`
-	ContainerReq  scheduleCreateServiceReq `json:"container" vd:" msg:'container wajib anda isi'"`
+	Action        domain.ContainerAction   `json:"action" vd:"$=='CREATE'; msg:'action harus dari pilihan berikut=CREATE'" binding:"required"`
+	ScheduledTIme uint64                   `json:"scheduled_time" vd:"$<10000000 && $>0; msg:'scheduled_time harus lebih dari 0'" binding:"required"`
+	TimeFormat    domain.TimeFormat        `json:"time_format" vd:"in($, 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND')" binding:"required"`
+	ContainerReq  scheduleCreateServiceReq `json:"container" vd:" msg:'container wajib anda isi'" binding:"required"`
 }
 
+
+// CreateScheduledCreate
+// @Summary menjadwalkan pembuatan container
+// @Description menjadwalkan pembuatan container
+// @Param body body scheduleCreateReq true "request body penjadwalan pembuatan container" 
+// @Tags containers
+// @Accept application/json
+// @Produce application/json
+// @Router /create/schedule [post]
+// @Security Authorization
+// @Success 200 {object} deleteRes
+// @failure 400 {object} ResponseError
+// @failure 500 {object} ResponseError
 func (m *ContainerHandler) CreateScheduledCreate(ctx context.Context, c *app.RequestContext) {
 	userID, _ := c.Get("userID")
 
@@ -625,14 +776,14 @@ type messageRes struct {
 	Message string `json:"message"`
 }
 
-func (m *ContainerHandler) RecoverContainerAfterStoppedAccidentally(ctx context.Context, c *app.RequestContext) {
-	err := m.svc.RecoverContainerAfterStoppedAccidentally(ctx)
-	if err != nil {
-		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, messageRes{"ok container recovered"})
-}
+// func (m *ContainerHandler) RecoverContainerAfterStoppedAccidentally(ctx context.Context, c *app.RequestContext) {
+// 	err := m.svc.RecoverContainerAfterStoppedAccidentally(ctx)
+// 	if err != nil {
+// 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
+// 		return
+// 	}
+// 	c.JSON(http.StatusOK, messageRes{"ok container recovered"})
+// }
 
 // // TerminatedAccidentally
 // // @Desc ini dipanggil sama monitorservice setiap 4 detik ketika ada container mati > 2 detik

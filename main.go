@@ -37,7 +37,18 @@ import (
 // @description init container service buat dogker
 
 // @contact.name lintang
-// @contact.url https
+// @contact.url uyayiu123@gmail.com
+// @description container service dogker
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host 103.175.219.0:8888
+// @BasePath /api/v1
+// @schemes http
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	cfg, err := config.NewConfig()
 	logsCores := pkg.InitZapLogger(cfg)
