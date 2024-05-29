@@ -50,7 +50,7 @@ func MyRouter(r *server.Hertz, c ContainerService) {
 		svc: c,
 	}
 
-	root := r.Group("/api/v1")
+	root := r.Group("/api/v1", middleware.Cors())
 	{
 		root.GET("/lalala", append(middleware.Protected(), handler.SayHello)...)
 		ctrH := root.Group("/containers")

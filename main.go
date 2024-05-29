@@ -22,9 +22,9 @@ import (
 	"github.com/cloudwego/kitex/pkg/klog"
 	"github.com/cloudwego/kitex/pkg/transmeta"
 	kitexServer "github.com/cloudwego/kitex/server"
+	"github.com/hertz-contrib/cors"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
-	    "github.com/hertz-contrib/cors"
 
 	"github.com/hertz-contrib/swagger"     // hertz-swagger middleware
 	swaggerFiles "github.com/swaggo/files" // swagger embed files
@@ -72,14 +72,14 @@ func main() {
 	h.Use(pkg.AccessLog())
 
 	h.Use(cors.New(cors.Config{
-		AllowAllOrigins: true,
-        AllowMethods:     []string{"PUT", "PATCH", "GET", "POST", "DELETE"},
-        AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-        ExposeHeaders:    []string{"Content-Length"},
-        AllowCredentials: true,
-       
-        MaxAge: 12 * time.Hour,
-    }))
+		AllowAllOrigins:  true,
+		AllowMethods:     []string{"PUT", "PATCH", "GET", "POST", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "User-Agent", "Cache-Control", "Pragma"},
+		ExposeHeaders:    []string{"Origin", "Content-Type", "Authorization", "Accept", "User-Agent", "Cache-Control", "Pragma"},
+		AllowCredentials: true,
+
+		MaxAge: 12 * time.Hour,
+	}))
 
 	var callback []route.CtxCallback
 	callback = append(callback, rmq.Close, pg.ClosePostgres)
