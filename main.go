@@ -24,6 +24,7 @@ import (
 	kitexServer "github.com/cloudwego/kitex/server"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
+	    "github.com/hertz-contrib/cors"
 
 	"github.com/hertz-contrib/swagger"     // hertz-swagger middleware
 	swaggerFiles "github.com/swaggo/files" // swagger embed files
@@ -31,13 +32,11 @@ import (
 	// swagger embed files
 )
 
-
 // @title go-container-service-lintang
 // @version 1.0
 // @description init container service buat dogker
 
 // @contact.name lintang
-// @contact.url uyayiu123@gmail.com
 // @description container service dogker
 
 // @license.name Apache 2.0
@@ -72,6 +71,17 @@ func main() {
 
 	h.Use(pkg.AccessLog())
 
+	h.Use(cors.New(cors.Config{
+		AllowAllOrigins: true,
+        AllowOrigins:     []string{"*"},
+        AllowMethods:     []string{"PUT", "PATCH", "GET", "POST", "DELETE"},
+        AllowHeaders:     []string{"Origin"},
+        ExposeHeaders:    []string{"Content-Length"},
+        AllowCredentials: true,
+       
+        MaxAge: 12 * time.Hour,
+    }))
+
 	var callback []route.CtxCallback
 	callback = append(callback, rmq.Close, pg.ClosePostgres)
 	h.Engine.OnShutdown = append(h.Engine.OnShutdown, callback...) /// graceful shutdown
@@ -88,12 +98,12 @@ func main() {
 	opts = append(opts, kitexServer.WithMetaHandler(transmeta.ServerHTTP2Handler))
 	opts = append(opts, kitexServer.WithServiceAddr(addr))
 	opts = append(opts, kitexServer.WithExitWaitTime(5*time.Second))
-	opts = append(opts, kitexServer.WithGRPCReadBufferSize(1024 * 1024 * 100))
+	opts = append(opts, kitexServer.WithGRPCReadBufferSize(1024*1024*100))
 
-	opts = append(opts, kitexServer.WithGRPCWriteBufferSize(1024 * 1024 * 100))
-	opts = append(opts, kitexServer.WithGRPCInitialConnWindowSize(1024 * 1024 * 100))
-	opts = append(opts, kitexServer.WithGRPCInitialWindowSize(1024 * 1024 * 100))
-	opts = append(opts, kitexServer.WithGRPCMaxHeaderListSize(1024 * 1024 * 100))
+	opts = append(opts, kitexServer.WithGRPCWriteBufferSize(1024*1024*100))
+	opts = append(opts, kitexServer.WithGRPCInitialConnWindowSize(1024*1024*100))
+	opts = append(opts, kitexServer.WithGRPCInitialWindowSize(1024*1024*100))
+	opts = append(opts, kitexServer.WithGRPCMaxHeaderListSize(1024*1024*100))
 
 	cGrpcSvc := di.InitContainerGRPCService(pg, rmq, cfg, cc)
 	srv := containergrpcservice.NewServer(cGrpcSvc, opts...)

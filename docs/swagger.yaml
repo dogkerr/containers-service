@@ -278,7 +278,6 @@ host: 103.175.219.0:8888
 info:
   contact:
     name: lintang
-    url: uyayiu123@gmail.com
   description: container service dogker
   license:
     name: Apache 2.0
@@ -286,38 +285,6 @@ info:
   title: go-container-service-lintang
   version: "1.0"
 paths:
-  /{id}/schedule:
-    post:
-      consumes:
-      - application/json
-      description: menjadwalkan start/stop/terminate container
-      parameters:
-      - description: request body penjadwalan start/stop/terminate container
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/router.scheduleContainerReq'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/router.deleteRes'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/router.ResponseError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/router.ResponseError'
-      security:
-      - Authorization: []
-      summary: menjadwalkan start/stop/terminate container
-      tags:
-      - containers
   /containers:
     get:
       description: Mendapatkan semua swarm service milik user
@@ -337,7 +304,7 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: Mendapatkan semua swarm service milik user
       tags:
       - containers
@@ -368,7 +335,7 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: User Membuat swarm service lewat endpoint inieperti pada postman (bearer
         access token saja
       tags:
@@ -398,7 +365,7 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: delete user swarm service
       tags:
       - containers
@@ -426,7 +393,7 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: Mendapatkan swarm service user berdasarkan id
       tags:
       - containers
@@ -462,7 +429,7 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: update swarm service user (bisa juga vertical scaling disini)
       tags:
       - containers
@@ -497,8 +464,45 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: horizontal scaling container user
+      tags:
+      - containers
+  /containers/{id}/schedule:
+    post:
+      consumes:
+      - application/json
+      description: menjadwalkan start/stop/terminate container
+      parameters:
+      - description: container id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: request body penjadwalan start/stop/terminate container
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/router.scheduleContainerReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/router.deleteRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/router.ResponseError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/router.ResponseError'
+      security:
+      - BearerAuth: []
+      summary: menjadwalkan start/stop/terminate container
       tags:
       - containers
   /containers/{id}/start:
@@ -526,7 +530,7 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: run container user
       tags:
       - containers
@@ -555,14 +559,46 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: stop container user
+      tags:
+      - containers
+  /containers/create/schedule:
+    post:
+      consumes:
+      - application/json
+      description: menjadwalkan pembuatan container
+      parameters:
+      - description: request body penjadwalan pembuatan container
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/router.scheduleCreateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/router.deleteRes'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/router.ResponseError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/router.ResponseError'
+      security:
+      - BearerAuth: []
+      summary: menjadwalkan pembuatan container
       tags:
       - containers
   /containers/upload:
     post:
       consumes:
-      - application/json
+      - multipart/form-data
       description: User Membuat swarm service tetapi source code (tarfile) nya dia
         upload  lewat endpoint ini
       parameters:
@@ -600,41 +636,9 @@ paths:
           schema:
             $ref: '#/definitions/router.ResponseError'
       security:
-      - Authorization: []
+      - BearerAuth: []
       summary: User Membuat swarm service tetapi source code (tarfile) nya dia upload
         ,lewat endpoint inieperti pada postman (bearer access token saja
-      tags:
-      - containers
-  /create/schedule:
-    post:
-      consumes:
-      - application/json
-      description: menjadwalkan pembuatan container
-      parameters:
-      - description: request body penjadwalan pembuatan container
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/router.scheduleCreateReq'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/router.deleteRes'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/router.ResponseError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/router.ResponseError'
-      security:
-      - Authorization: []
-      summary: menjadwalkan pembuatan container
       tags:
       - containers
 schemes:

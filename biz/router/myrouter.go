@@ -117,7 +117,7 @@ type createContainerResp struct {
 // @Accept application/json
 // @Produce application/json
 // @Router /containers [post]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} createContainerResp
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -205,10 +205,10 @@ type createServiceAndBuildImageReq struct {
 // @Description  User Membuat swarm service tetapi source code (tarfile) nya dia upload  lewat endpoint ini
 // @Tags containers
 // @Param body formData createServiceAndBuildImageReq true "request body membuat container dengan tarfile source code "
-// @Accept application/json
+// @Accept multipart/form-data
 // @Produce application/json
 // @Router /containers/upload [post]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} createContainerResp
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -290,7 +290,7 @@ type getUserContainersResp struct {
 // @Tags containers
 // @Produce application/json
 // @Router /containers [get]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} getUserContainersResp
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -329,7 +329,7 @@ type getContainerRes struct {
 // @Tags containers
 // @Produce application/json
 // @Router /containers/{id} [get]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} getContainerRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -358,7 +358,7 @@ func (m *ContainerHandler) GetContainer(ctx context.Context, c *app.RequestConte
 // @Tags containers
 // @Produce application/json
 // @Router /containers/{id}/start [post]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} getContainerRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -393,7 +393,7 @@ type deleteRes struct {
 // @Tags containers
 // @Produce application/json
 // @Router /containers/{id}/stop [post]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} deleteRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -421,7 +421,7 @@ func (m *ContainerHandler) StopContainer(ctx context.Context, c *app.RequestCont
 // @Tags containers
 // @Produce application/json
 // @Router /containers/{id} [delete]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} deleteRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -456,7 +456,7 @@ type updateRes struct {
 // @Accept application/json
 // @Produce application/json
 // @Router /containers/{id} [put]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} updateRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -511,7 +511,7 @@ type scaleReq struct {
 // @Tags containers
 // @Produce application/json
 // @Router /containers/{id}/scale [put]
-// @Security Authorization
+// @Security BearerAuth
 // @Success 200 {object} updateRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -665,12 +665,13 @@ type scheduleContainerReq struct {
 // ScheduleContainer
 // @Summary menjadwalkan start/stop/terminate container
 // @Description menjadwalkan start/stop/terminate container
+// @Param id path string true "container id"
 // @Param body body scheduleContainerReq true "request body penjadwalan start/stop/terminate container" 
 // @Tags containers
 // @Accept application/json
 // @Produce application/json
-// @Router /{id}/schedule [post]
-// @Security Authorization
+// @Router /containers/{id}/schedule [post]
+// @Security BearerAuth
 // @Success 200 {object} deleteRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError
@@ -709,8 +710,8 @@ type scheduleCreateReq struct {
 // @Tags containers
 // @Accept application/json
 // @Produce application/json
-// @Router /create/schedule [post]
-// @Security Authorization
+// @Router /containers/create/schedule [post]
+// @Security BearerAuth
 // @Success 200 {object} deleteRes
 // @failure 400 {object} ResponseError
 // @failure 500 {object} ResponseError

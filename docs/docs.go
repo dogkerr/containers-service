@@ -10,8 +10,7 @@ const docTemplate = `{
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
         "contact": {
-            "name": "lintang",
-            "url": "uyayiu123@gmail.com"
+            "name": "lintang"
         },
         "license": {
             "name": "Apache 2.0",
@@ -26,7 +25,7 @@ const docTemplate = `{
             "get": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Mendapatkan semua swarm service milik user",
@@ -61,7 +60,7 @@ const docTemplate = `{
             "post": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "User Membuat swarm service lewat endpoint ini",
@@ -108,16 +107,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/containers/create/schedule": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "menjadwalkan pembuatan container",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "containers"
+                ],
+                "summary": "menjadwalkan pembuatan container",
+                "parameters": [
+                    {
+                        "description": "request body penjadwalan pembuatan container",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/router.scheduleCreateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/router.deleteRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/router.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/router.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
         "/containers/upload": {
             "post": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "User Membuat swarm service tetapi source code (tarfile) nya dia upload  lewat endpoint ini",
                 "consumes": [
-                    "application/json"
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -181,7 +231,7 @@ const docTemplate = `{
             "get": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Mendapatkan swarm service user berdasarkan id",
@@ -225,7 +275,7 @@ const docTemplate = `{
             "put": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "update swarm service user (bisa juga vertical scaling disini)",
@@ -281,7 +331,7 @@ const docTemplate = `{
             "delete": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "delete user swarm service",
@@ -327,7 +377,7 @@ const docTemplate = `{
             "put": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "horizontal scaling container user",
@@ -378,11 +428,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/containers/{id}/schedule": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "menjadwalkan start/stop/terminate container",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "containers"
+                ],
+                "summary": "menjadwalkan start/stop/terminate container",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "container id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "request body penjadwalan start/stop/terminate container",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/router.scheduleContainerReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/router.deleteRes"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/router.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/router.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
         "/containers/{id}/start": {
             "post": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "run container user",
@@ -428,7 +536,7 @@ const docTemplate = `{
             "post": {
                 "security": [
                     {
-                        "Authorization": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "stop container user",
@@ -446,108 +554,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/router.deleteRes"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/router.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/router.ResponseError"
-                        }
-                    }
-                }
-            }
-        },
-        "/create/schedule": {
-            "post": {
-                "security": [
-                    {
-                        "Authorization": []
-                    }
-                ],
-                "description": "menjadwalkan pembuatan container",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "containers"
-                ],
-                "summary": "menjadwalkan pembuatan container",
-                "parameters": [
-                    {
-                        "description": "request body penjadwalan pembuatan container",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/router.scheduleCreateReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/router.deleteRes"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/router.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/router.ResponseError"
-                        }
-                    }
-                }
-            }
-        },
-        "/{id}/schedule": {
-            "post": {
-                "security": [
-                    {
-                        "Authorization": []
-                    }
-                ],
-                "description": "menjadwalkan start/stop/terminate container",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "containers"
-                ],
-                "summary": "menjadwalkan start/stop/terminate container",
-                "parameters": [
-                    {
-                        "description": "request body penjadwalan start/stop/terminate container",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/router.scheduleContainerReq"
-                        }
                     }
                 ],
                 "responses": {
