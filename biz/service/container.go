@@ -171,7 +171,7 @@ func (s *ContainerService) GetUserContainers(ctx context.Context, userID string,
 	// get all user container di repo
 	userCtrsDb, err := s.containerRepo.GetAllUserContainers(ctx, userID)
 	if err != nil {
-		
+
 		return nil, err
 	}
 
@@ -245,6 +245,14 @@ func (s *ContainerService) StartContainer(ctx context.Context, ctrID string, use
 	lifecycles := ctrDB.ContainerLifecycles
 	lastReplicaFromDB := qSortWaktu(lifecycles).Replica
 
+	lastCtr, err := s.dockerAPI.Get(ctx, ctrID, ctrDB)
+	if err != nil {
+		return nil, err 
+	}
+	if lastCtr.Status == domain.ServiceRun {
+		return lastCtr, nil
+	}
+
 	// start container
 	ctr, err := s.dockerAPI.Start(ctx, ctrID, lastReplicaFromDB, userID, ctrDB)
 	if err != nil {
@@ -299,6 +307,14 @@ func (s *ContainerService) StopContainer(ctx context.Context, ctrID string, user
 	err = s.containerRepo.InsertContainerMetrics(ctx, *metric)
 	if err != nil {
 		return err
+	}
+
+	lastCtr, err := s.dockerAPI.Get(ctx, ctrID, ctrDB)
+	if err != nil {
+		return err
+	}
+	if lastCtr.Status == domain.ServiceStopped {
+		return nil
 	}
 
 	// stop container

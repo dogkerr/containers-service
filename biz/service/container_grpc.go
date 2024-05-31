@@ -43,7 +43,11 @@ func (s *ContainerGRPCServiceImpl) StopContainerCreditLimit(ctx context.Context,
 
 	for _, ctr := range *userCtrs {
 		// stop container di docker
+
 		ctrID := ctr.ServiceID
+		if ctr.Status == domain.ServiceStopped {
+			continue
+		}
 		err = s.dockerAPI.Stop(ctx, ctrID, ctr.UserID, &ctr)
 		if err != nil {
 			zap.L().Error("s.dockerAPI.Stop (StopContainerCreditLimit) (ContainerGRPC)", zap.Error(err))
@@ -51,12 +55,12 @@ func (s *ContainerGRPCServiceImpl) StopContainerCreditLimit(ctx context.Context,
 		}
 
 		lastLifeCycleID := qSortWaktu(ctr.ContainerLifecycles).ID
-		err :=  s.containerRepo.UpdateContainerLifecycleStatus(ctx, domain.ContainerStatusSTOPPED, lastLifeCycleID)
+		err := s.containerRepo.UpdateContainerLifecycleStatus(ctx, domain.ContainerStatusSTOPPED, lastLifeCycleID)
 		if err != nil {
-			zap.L().Error("s.containerRepo.UpdateContainerLifecycleStatus ()StopContainerCreditLimit (ContainerGRPC)", zap.Error(err) )
+			zap.L().Error("s.containerRepo.UpdateContainerLifecycleStatus ()StopContainerCreditLimit (ContainerGRPC)", zap.Error(err))
 		}
 
-	}	
+	}
 
 	var ctrs []*domain.Container
 	for _, ctr := range *userCtrs {
@@ -80,7 +84,7 @@ func (s *ContainerGRPCServiceImpl) StopContainerCreditLimit(ctx context.Context,
 	// if err != nil {
 	// 	zap.L().Error("s.containerRepo.BatchUpdateContainerLifecycle (StopContainerCreditLimit) (ContainerGRPC)", zap.Error(err))
 	// 	return nil, status.Errorf(getStatusCode(err), "%v", err)
-	// } 
+	// }
 
 	res := &pb.StopUserContainerCreditLimitRes{
 		Message: "user container succesfully stopped",
@@ -116,7 +120,6 @@ func (s *ContainerGRPCServiceImpl) GetContainerStatus(ctx context.Context, req *
 func (s *ContainerGRPCServiceImpl) ContainerTerminatedAccidentally(ctx context.Context, req *pb.ContainerTerminatedAccidentallyReq) (resp *pb.ContainerTerminatedAccidentallyRes, err error) {
 	// TODO: Your code here...
 	// get containers detail dari list of service Ids
-
 
 	// yang iini kukomen semua karna error & gaperlu juga karena kalo service distop lewat cli bakal di start seendiri sama swarm
 
