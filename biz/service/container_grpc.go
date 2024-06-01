@@ -64,6 +64,9 @@ func (s *ContainerGRPCServiceImpl) StopContainerCreditLimit(ctx context.Context,
 
 	var ctrs []*domain.Container
 	for _, ctr := range *userCtrs {
+		if ctr.Status == domain.ServiceStopped {
+			continue
+		}
 		ctrs = append(ctrs, &domain.Container{
 			ID:            ctr.ID,
 			UserID:        ctr.UserID,
@@ -74,10 +77,12 @@ func (s *ContainerGRPCServiceImpl) StopContainerCreditLimit(ctx context.Context,
 			ServiceID:     ctr.ServiceID,
 		})
 	}
-	err = s.containerRepo.BatchUpdateContainer(ctx, ctrs) // update status container jadi stop
-	if err != nil {
-		zap.L().Error("s.containerRepo.BatchUpdateContainer (StopContainerCreditLimit) (ContainerGRPC)", zap.Error(err))
-		return nil, status.Errorf(getStatusCode(err), "%v", err)
+	if len(ctrs) != 0 {
+		err = s.containerRepo.BatchUpdateContainer(ctx, ctrs) // update status container jadi stop
+		if err != nil {
+			zap.L().Error("s.containerRepo.BatchUpdateContainer (StopContainerCreditLimit) (ContainerGRPC)", zap.Error(err))
+			return nil, status.Errorf(getStatusCode(err), "%v", err)
+		}
 	}
 
 	// err = s.containerRepo.BatchUpdateContainerLifecycle(ctx, ctrs) //  update status containerlifecycle jadi stopped

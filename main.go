@@ -34,7 +34,6 @@ import (
 	// swagger embed files
 )
 
-
 // @title go-container-service-lintang
 // @version 1.0
 // @description init container service buat dogker
@@ -75,7 +74,6 @@ func main() {
 
 	h.Use(pkg.AccessLog())
 
-
 	corsHandler := cors.New(cors.Config{
 		AllowAllOrigins:  true,
 		AllowMethods:     []string{"PUT", "PATCH", "GET", "POST", "DELETE", "OPTIONS"},
@@ -87,7 +85,7 @@ func main() {
 	}) // ini gakbisa cok
 
 	h.Use(corsHandler)
-	
+
 	var callback []route.CtxCallback
 	callback = append(callback, rmq.Close, pg.ClosePostgres)
 	h.Engine.OnShutdown = append(h.Engine.OnShutdown, callback...) /// graceful shutdown

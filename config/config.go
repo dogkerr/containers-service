@@ -24,6 +24,7 @@ type (
 		Dkron
 		Auth
 		Minio
+		Mailing
 	}
 
 	// App -.
@@ -82,6 +83,10 @@ type (
 		BaseURL         string `json:"base_url_minio" env:"BASE_URL_MINIO"`
 		AccessKeyID     string `json:"access_key_minio" env:"ACC_KEY_MINIO"`
 		SecretAccessKey string `json:"secret_key_minio" env:"SECRET_KEY_MINIO"`
+	}
+
+	Mailing struct {
+		MailingURL string `env:"MAILING_URL"`
 	}
 )
 

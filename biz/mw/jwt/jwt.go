@@ -66,7 +66,7 @@ func GetJwtMiddleware() *jwt.HertzJWTMiddleware {
 				c.Set("userID", v.ID)
 				authCC, err := grpc.NewClient(os.Getenv("AUTH_URL")+"?wait=30s", grpc.WithTransportCredentials(insecure.NewCredentials()))
 				if err != nil {
-					zap.L().Error("grpc.NewClient", zap.Error(err ))
+					zap.L().Error("grpc.NewClient", zap.Error(err))
 					return false
 				}
 				userClient := webapi.NewUserClient(authCC)

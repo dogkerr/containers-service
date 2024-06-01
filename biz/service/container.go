@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"dogker/lintang/container-service/biz/domain"
+	"dogker/lintang/container-service/biz/router"
+	"dogker/lintang/container-service/biz/webapi"
 	"fmt"
 	"mime/multipart"
 	"os"
@@ -61,22 +63,28 @@ type MinioAPI interface {
 	GetObject(ctx context.Context, bucketName string, objectName string) (*os.File, string, error)
 }
 
+type MailingServiceWebAPI interface {
+	SendContainerDown(ctx context.Context, label webapi.CommonLabels) error
+}
+
 type ContainerService struct {
 	containerRepo ContainerRepository
 	dockerAPI     DockerEngineAPI
 	dkronAPI      DkronAPI
 	monitorClient MonitorClient
 	minioAPI      MinioAPI
+	mailingWebAPI MailingServiceWebAPI
 }
 
 func NewContainerService(c ContainerRepository, d DockerEngineAPI, dkron DkronAPI, monitorSvc MonitorClient,
-	minioAPI MinioAPI) *ContainerService {
+	minioAPI MinioAPI, mailingWebAPI MailingServiceWebAPI) *ContainerService {
 	return &ContainerService{
 		containerRepo: c,
 		dockerAPI:     d,
 		dkronAPI:      dkron,
 		monitorClient: monitorSvc,
 		minioAPI:      minioAPI,
+		mailingWebAPI: mailingWebAPI,
 	}
 }
 
@@ -247,7 +255,7 @@ func (s *ContainerService) StartContainer(ctx context.Context, ctrID string, use
 
 	lastCtr, err := s.dockerAPI.Get(ctx, ctrID, ctrDB)
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
 	if lastCtr.Status == domain.ServiceRun {
 		return lastCtr, nil
@@ -649,6 +657,30 @@ func (s *ContainerService) RecoverContainerAfterStoppedAccidentally(ctx context.
 
 	return nil
 
+}
+
+func (s *ContainerService) ContainerDown(ctx context.Context, label router.CommonLabels) (string, error) {
+
+	ctr, err := s.containerRepo.Get(ctx, label.ContainerSwarmServiceID)
+	if err != nil {
+		return "", err
+	}
+	if ctr.Status == domain.ServiceStopped {
+		return "container stopped by user", nil
+	}
+
+	err = s.mailingWebAPI.SendContainerDown(ctx, webapi.CommonLabels{
+		Alertname:                       label.Alertname,
+		ContainerSwarmServiceID:         label.ContainerSwarmServiceID,
+		ContainerDockerSwarmServiceName: label.ContainerDockerSwarmServiceName,
+		ContainerLabelUserID:            label.ContainerLabelUserID,
+	})
+	if err != nil {
+		zap.L().Error("es.mailingWebAPI.SendContainerDown (ContainerDown) (COntainerServce)", zap.Error(err))
+		return "cant send to mailing svc", err 
+	}
+	zap.L().Info(fmt.Sprintf("email container down send to user %s", label.ContainerLabelUserID))
+	return fmt.Sprintf("email container down send to user %s", label.ContainerLabelUserID), nil
 }
 
 func qSortWaktu(arr []domain.ContainerLifecycle) domain.ContainerLifecycle {
