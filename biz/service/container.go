@@ -666,6 +666,7 @@ func (s *ContainerService) ContainerDown(ctx context.Context, label router.Commo
 		return "", err
 	}
 	if ctr.Status == domain.ServiceStopped {
+		zap.L().Info(fmt.Sprintf("container %s stopped by user", label.ContainerSwarmServiceID))
 		return "container stopped by user", nil
 	}
 
