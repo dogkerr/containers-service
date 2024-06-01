@@ -56,6 +56,7 @@ type DkronAPI interface {
 
 type MonitorClient interface {
 	GetSpecificContainerMetrics(ctx context.Context, ctrID string, userID string, serviceStartTime time.Time) (*domain.Metric, error)
+	SendMetricsStopTerminatedContainerToBillingService(ctx context.Context, metricMonitor domain.UserMetricsMessage) error
 }
 
 type MinioAPI interface {
@@ -310,6 +311,21 @@ func (s *ContainerService) StopContainer(ctx context.Context, ctrID string, user
 		return err
 	}
 
+	// send last metrics to monitor service, terus monitor service kirim rabbitmq ke billing buat charge user
+	err = s.monitorClient.SendMetricsStopTerminatedContainerToBillingService(ctx, domain.UserMetricsMessage{
+		ContainerID:         ctrDB.ID,
+		UserID:              ctrDB.UserID,
+		CpuUsage:            metric.CpuUsage,
+		MemoryUsage:         metric.MemoryUsage,
+		NetworkIngressUsage: metric.NetworkIngressUsage,
+		NetworkEgressUsage:  metric.NetworkEgressUsage,
+	})
+
+	if err != nil {
+		zap.L().Error(fmt.Sprintf("s.monitorClient.SendMetricsStopTerminatedContainerToBillingService (StopContainer) (ContainerService)", zap.Error(err)))
+		return err
+	}
+
 	// insert last metrics ino container_metrics table
 	metric.ContainerID = ctrDB.ID
 	err = s.containerRepo.InsertContainerMetrics(ctx, *metric)
@@ -380,6 +396,25 @@ func (s *ContainerService) DeleteContainer(ctx context.Context, ctrID string, us
 		if err != nil {
 			return err
 		}
+	}
+	metric, err := s.monitorClient.GetSpecificContainerMetrics(ctx, ctrID, userID, ctrDB.CreatedTime)
+	if err != nil {
+		return err
+	}
+
+	// send last metrics to monitor service, terus monitor service kirim rabbitmq ke billing buat charge user
+	err = s.monitorClient.SendMetricsStopTerminatedContainerToBillingService(ctx, domain.UserMetricsMessage{
+		ContainerID:         ctrDB.ID,
+		UserID:              ctrDB.UserID,
+		CpuUsage:            metric.CpuUsage,
+		MemoryUsage:         metric.MemoryUsage,
+		NetworkIngressUsage: metric.NetworkIngressUsage,
+		NetworkEgressUsage:  metric.NetworkEgressUsage,
+	})
+
+	if err != nil {
+		zap.L().Error(fmt.Sprintf("s.monitorClient.SendMetricsStopTerminatedContainerToBillingService (StopContainer) (ContainerService)", zap.Error(err)))
+		return err
 	}
 
 	// delete container
@@ -678,7 +713,7 @@ func (s *ContainerService) ContainerDown(ctx context.Context, label router.Commo
 	})
 	if err != nil {
 		zap.L().Error("es.mailingWebAPI.SendContainerDown (ContainerDown) (COntainerServce)", zap.Error(err))
-		return "cant send to mailing svc", err 
+		return "cant send to mailing svc", err
 	}
 	zap.L().Info(fmt.Sprintf("email container down send to user %s", label.ContainerLabelUserID))
 	return fmt.Sprintf("email container down send to user %s", label.ContainerLabelUserID), nil

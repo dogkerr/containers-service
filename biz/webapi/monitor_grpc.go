@@ -20,6 +20,29 @@ func NewMonitorClient(cc *grpc.ClientConn) *MonitorClient {
 	return &MonitorClient{service: service}
 }
 
+func (m *MonitorClient) SendMetricsStopTerminatedContainerToBillingService(ctx context.Context, metricMonitor domain.UserMetricsMessage) error {
+	grpcCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req := &pb.SendMetricsStopTerminatedContainerToBillingServiceReq{
+		ContainerId:         metricMonitor.ContainerID,
+		UserId:              metricMonitor.UserID,
+		CpuUsage:            metricMonitor.CpuUsage,
+		MemoryUsage:         metricMonitor.MemoryUsage,
+		NetworkIngressUsage: metricMonitor.NetworkIngressUsage,
+		NetworkEgressUsage:  metricMonitor.NetworkEgressUsage,
+	}
+
+	msg, err := m.service.SendMetricsStopTerminatedContainerToBillingService(grpcCtx, req)
+	if err != nil {
+		zap.L().Error("m.service.SendMetricsStopTerminatedContainerToBillingService ", zap.Error(err))
+		return err
+	}
+
+	zap.L().Info(msg.Message)
+	return nil
+}
+
 func (m *MonitorClient) GetSpecificContainerMetrics(ctx context.Context, ctrID string, userID string, serviceStartTime time.Time) (*domain.Metric, error) {
 
 	grpcCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -38,7 +61,7 @@ func (m *MonitorClient) GetSpecificContainerMetrics(ctx context.Context, ctrID s
 	}
 
 	res := &domain.Metric{
-		ContainerID: ctrMetrics.UserContainer.Id,
+		ContainerID:         ctrMetrics.UserContainer.Id,
 		CpuUsage:            ctrMetrics.UserContainer.CpuUsage,
 		MemoryUsage:         ctrMetrics.UserContainer.MemoryUsage,
 		NetworkIngressUsage: ctrMetrics.UserContainer.NetworkIngressUsage,

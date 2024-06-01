@@ -29,7 +29,7 @@ option go_package = "dogker/lintang/monitor-service/pb";
 
 enum ContainerStatus {
 	RUN = 0;
-	STOPPED = 1;
+	STOP = 1;
 }
 
 
@@ -92,13 +92,27 @@ message GetSpecificContainerResourceUsageResponse {
 	google.protobuf.Timestamp currentTime = 1;
 	Container user_container = 2;
 	google.protobuf.Timestamp  fromTime =7;
+}
 
+message SendMetricsStopTerminatedContainerToBillingServiceReq {
+	string container_id = 1;
+	string user_id = 2;
+	float cpu_usage = 3;
+	float memory_usage = 4;
+	float network_ingress_usage = 5;
+	float network_egress_usage = 6;
+}
+
+message SendMetricsStopTerminatedContainerToBillingServiceRes {
+	string message = 1;
 }
 
 service MonitorService {
 	rpc GetAllUserContainerResourceUsage(GetUserContainerResourceUsageRequest) returns ( GetAllUserContainerResourceUsageResponse);
 	rpc GetSpecificContainerResourceUsage(GetSpecificContainerResourceUsageRequest) returns (GetSpecificContainerResourceUsageResponse);
+	rpc SendMetricsStopTerminatedContainerToBillingService(SendMetricsStopTerminatedContainerToBillingServiceReq) returns (SendMetricsStopTerminatedContainerToBillingServiceRes);
 }
+
 
 
 

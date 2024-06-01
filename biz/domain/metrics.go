@@ -10,3 +10,12 @@ type Metric struct {
 	NetworkEgressUsage  float32   `json:"network_egress_usage"`
 	CreatedTime         time.Time `json:"created_time"`
 }
+
+type UserMetricsMessage struct {
+	ContainerID         string
+	UserID              string
+	CpuUsage            float32
+	MemoryUsage         float32
+	NetworkIngressUsage float32
+	NetworkEgressUsage  float32
+}
