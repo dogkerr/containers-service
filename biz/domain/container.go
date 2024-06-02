@@ -18,9 +18,9 @@ import (
 type ServiceStatus string
 
 const (
-	ServiceCreated   ServiceStatus = "CREATED"
-	ServiceRun       ServiceStatus = "RUN"
-	ServiceStopped   ServiceStatus = "STOPPED"
+	ServiceCreated    ServiceStatus = "CREATED"
+	ServiceRun        ServiceStatus = "RUN"
+	ServiceStopped    ServiceStatus = "STOPPED"
 	ServiceTerminated ServiceStatus = "TERMINATED"
 )
 
@@ -51,6 +51,8 @@ type Container struct {
 	CreatedTime         time.Time            `json:"created_at"`
 	TerminatedTime      time.Time            `json:"terminated_time"`
 	ContainerLifecycles []ContainerLifecycle `json:"all_container_lifecycles"`
+	Volumes             []string             `json:"volumes"`
+
 	// id dari containernya/servicenya
 	ServiceID string `json:"service_id"`
 	Image     string `json:"image"`

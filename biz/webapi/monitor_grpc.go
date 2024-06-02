@@ -21,7 +21,7 @@ func NewMonitorClient(cc *grpc.ClientConn) *MonitorClient {
 }
 
 func (m *MonitorClient) SendMetricsStopTerminatedContainerToBillingService(ctx context.Context, metricMonitor domain.UserMetricsMessage) error {
-	grpcCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	grpcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	req := &pb.SendMetricsStopTerminatedContainerToBillingServiceReq{
@@ -45,7 +45,7 @@ func (m *MonitorClient) SendMetricsStopTerminatedContainerToBillingService(ctx c
 
 func (m *MonitorClient) GetSpecificContainerMetrics(ctx context.Context, ctrID string, userID string, serviceStartTime time.Time) (*domain.Metric, error) {
 
-	grpcCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	grpcCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	req := &pb.GetSpecificContainerResourceUsageRequest{

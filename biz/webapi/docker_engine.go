@@ -13,8 +13,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+	"github.com/gofrs/uuid"
 	"go.uber.org/zap"
 )
 
@@ -59,56 +61,126 @@ func (d *DockerEngineAPI) CreateService(ctx context.Context, c *domain.Container
 		c.Labels["user_id"] = c.UserID
 	}
 
-	// create docker swarm service
-	resp, err := d.Cli.ServiceCreate(ctx, swarm.ServiceSpec{
-		TaskTemplate: swarm.TaskSpec{
+	var resp swarm.ServiceCreateResponse
 
-			ContainerSpec: &swarm.ContainerSpec{
-				Image:  c.Image,
-				Labels: c.Labels,
-				Env:    c.Env,
-			},
-			Resources: &swarm.ResourceRequirements{
-				Limits: &swarm.Limit{
-					NanoCPUs:    c.Limit.CPUs * 1000000,   // milicpu to nanocpu
-					MemoryBytes: c.Limit.Memory * 1000000, // mb to bytes
-				},
-				Reservations: &swarm.Resources{
-					NanoCPUs:    c.Reservation.CPUs * 1000000,
-					MemoryBytes: c.Reservation.Memory * 1000000,
-				},
-			},
-			LogDriver: &swarm.Driver{
-				Name: "loki",
-				Options: map[string]string{
-					"loki-url":             "http://localhost:3100/loki/api/v1/push",
-					"loki-retries":         "5",
-					"loki-batch-size":      "400",
-					"loki-external-labels": "job=docker,container_name=" + c.Name + ",userId=" + c.UserID,
-				},
-			},
-		},
-		Annotations: swarm.Annotations{
-			Name:   c.Name,
-			Labels: c.Labels,
-		},
-		Mode: swarm.ServiceMode{
-			Replicated: &swarm.ReplicatedService{
-				Replicas: &c.Replica,
-			},
-		},
-		EndpointSpec: &swarm.EndpointSpec{
-			Ports: portsConfig,
-		},
-	}, types.ServiceCreateOptions{})
-	if err != nil {
-		fmt.Println(c.Endpoint[0].PublishedPort)
-		if strings.Contains(err.Error(), "already in use") {
-			return "", domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already in use", c.Endpoint[0].PublishedPort))
+	var mounts []mount.Mount
+	if len(c.Volumes) != 0 {
+		// bikin service pake volume
+		sourceUid, _ := uuid.NewV4()
+		source := sourceUid.String()
+		for i := 0; i < len(c.Volumes); i++ {
+			mounts = append(mounts, mount.Mount{
+				Type:   mount.TypeVolume,
+				Source: source,
+				Target: c.Volumes[i],
+			})
 		}
-		// hlog.Error(" d.Cli.ServiceCreate", err)
-		zap.L().Error(" d.Cli.ServiceCreate", zap.Error(err))
-		return "", domain.WrapErrorf(err, domain.ErrBadParamInput, err.Error())
+		var err error
+		resp, err = d.Cli.ServiceCreate(ctx, swarm.ServiceSpec{
+			TaskTemplate: swarm.TaskSpec{
+
+				ContainerSpec: &swarm.ContainerSpec{
+					Image:  c.Image,
+					Labels: c.Labels,
+					Env:    c.Env,
+					Mounts: mounts,
+				},
+				Resources: &swarm.ResourceRequirements{
+					Limits: &swarm.Limit{
+						NanoCPUs:    c.Limit.CPUs * 1000000,   // milicpu to nanocpu
+						MemoryBytes: c.Limit.Memory * 1000000, // mb to bytes
+					},
+					Reservations: &swarm.Resources{
+						NanoCPUs:    c.Reservation.CPUs * 1000000,
+						MemoryBytes: c.Reservation.Memory * 1000000,
+					},
+				},
+				LogDriver: &swarm.Driver{
+					Name: "loki",
+					Options: map[string]string{
+						"loki-url":             "http://localhost:3100/loki/api/v1/push",
+						"loki-retries":         "5",
+						"loki-batch-size":      "400",
+						"loki-external-labels": "job=docker,container_name=" + c.Name + ",userId=" + c.UserID,
+					},
+				},
+			},
+			Annotations: swarm.Annotations{
+				Name:   c.Name,
+				Labels: c.Labels,
+			},
+			Mode: swarm.ServiceMode{
+				Replicated: &swarm.ReplicatedService{
+					Replicas: &c.Replica,
+				},
+			},
+			EndpointSpec: &swarm.EndpointSpec{
+				Ports: portsConfig,
+			},
+		}, types.ServiceCreateOptions{})
+		if err != nil {
+			fmt.Println(c.Endpoint[0].PublishedPort)
+			if strings.Contains(err.Error(), "already in use") {
+				return "", domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already in use", c.Endpoint[0].PublishedPort))
+			}
+			// hlog.Error(" d.Cli.ServiceCreate", err)
+			zap.L().Error(" d.Cli.ServiceCreate", zap.Error(err))
+			return "", domain.WrapErrorf(err, domain.ErrBadParamInput, err.Error())
+		}
+	} else {
+		// create docker swarm service tanpa volume
+		var err error
+		resp, err = d.Cli.ServiceCreate(ctx, swarm.ServiceSpec{
+			TaskTemplate: swarm.TaskSpec{
+
+				ContainerSpec: &swarm.ContainerSpec{
+					Image:  c.Image,
+					Labels: c.Labels,
+					Env:    c.Env,
+				},
+				Resources: &swarm.ResourceRequirements{
+					Limits: &swarm.Limit{
+						NanoCPUs:    c.Limit.CPUs * 1000000,   // milicpu to nanocpu
+						MemoryBytes: c.Limit.Memory * 1000000, // mb to bytes
+					},
+					Reservations: &swarm.Resources{
+						NanoCPUs:    c.Reservation.CPUs * 1000000,
+						MemoryBytes: c.Reservation.Memory * 1000000,
+					},
+				},
+				LogDriver: &swarm.Driver{
+					Name: "loki",
+					Options: map[string]string{
+						"loki-url":             "http://localhost:3100/loki/api/v1/push",
+						"loki-retries":         "5",
+						"loki-batch-size":      "400",
+						"loki-external-labels": "job=docker,container_name=" + c.Name + ",userId=" + c.UserID,
+					},
+				},
+			},
+			Annotations: swarm.Annotations{
+				Name:   c.Name,
+				Labels: c.Labels,
+			},
+			Mode: swarm.ServiceMode{
+				Replicated: &swarm.ReplicatedService{
+					Replicas: &c.Replica,
+				},
+			},
+			EndpointSpec: &swarm.EndpointSpec{
+				Ports: portsConfig,
+			},
+		}, types.ServiceCreateOptions{})
+		if err != nil {
+			fmt.Println(c.Endpoint[0].PublishedPort)
+			if strings.Contains(err.Error(), "already in use") {
+				return "", domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("port %d already in use", c.Endpoint[0].PublishedPort))
+			}
+			// hlog.Error(" d.Cli.ServiceCreate", err)
+			zap.L().Error(" d.Cli.ServiceCreate", zap.Error(err))
+			return "", domain.WrapErrorf(err, domain.ErrBadParamInput, err.Error())
+		}
+
 	}
 
 	return resp.ID, nil
@@ -167,7 +239,6 @@ func (d *DockerEngineAPI) IsPublicPortAndNameAvailable(ctx context.Context, want
 			return domain.WrapErrorf(err, domain.ErrBadParamInput, fmt.Sprintf("container name %s already allocated by other user", name))
 		}
 	}
-
 
 	return nil
 }
@@ -293,6 +364,13 @@ func (d *DockerEngineAPI) Get(ctx context.Context, ctrID string, cDB *domain.Con
 		})
 	}
 
+	var volumes []string
+	if len(resp.Spec.TaskTemplate.ContainerSpec.Mounts) != 0 {
+		for i := 0; i < len(resp.Spec.TaskTemplate.ContainerSpec.Mounts); i++ {
+			volumes = append(volumes, resp.Spec.TaskTemplate.ContainerSpec.Mounts[i].Target)
+		}
+	}
+
 	ctr := &domain.Container{
 		ID:                  cDB.ID,
 		UserID:              cDB.UserID,
@@ -318,6 +396,7 @@ func (d *DockerEngineAPI) Get(ctx context.Context, ctrID string, cDB *domain.Con
 		Env:       resp.Spec.TaskTemplate.ContainerSpec.Env,
 		Endpoint:  ctrEndpoints,
 		Available: runningTasks,
+		Volumes:   volumes,
 	}
 
 	return ctr, nil
@@ -348,7 +427,6 @@ func (d *DockerEngineAPI) getLastReplica(ctx context.Context, ctrID string, last
 	// kalau previous spec replica == 0  && lastReplicaFromDB != 0
 	return lastReplicaFromDB, nil
 }
-
 
 // Start
 // @Description misal awalnya stop(replica =0), tinggal get jumlah replica sebbelum stop , terus scale replicanya ke jumlah replica lama

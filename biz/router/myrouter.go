@@ -105,6 +105,7 @@ type createServiceReq struct {
 	Reservation domain.Resource   `json:"reservation,omitempty" `
 	Replica     int64             `json:"replica,required" vd:"$<1000 && $>=0; msg:'replica harus diantara 0-1000'" binding:"required"`
 	Endpoint    []domain.Endpoint `json:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'" binding:"required"`
+	Volumes     []string          `json:"volumes" vd:"regexp('^\/.*')"`
 }
 
 // createContainerResp model info
@@ -161,6 +162,7 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 		Replica:     uint64(req.Replica),
 		Endpoint:    dEndpoint,
 		UserID:      userId.(string),
+		Volumes:     req.Volumes,
 	})
 	if err != nil {
 		c.JSON(getStatusCode(err), ResponseError{Message: err.Error()})
@@ -187,6 +189,7 @@ func (m *ContainerHandler) CreateContainer(ctx context.Context, c *app.RequestCo
 			ContainerPort:       int(req.Endpoint[0].TargetPort),
 			PublicPort:          int(req.Endpoint[0].PublishedPort),
 			ContainerLifecycles: []domain.ContainerLifecycle{*ctrLife},
+			Volumes: req.Volumes,
 		},
 	}
 	c.JSON(consts.StatusOK, resp)
@@ -205,6 +208,7 @@ type createServiceAndBuildImageReq struct {
 	Endpoint    []domain.Endpoint     `form:"endpoint,required" vd:"@:len($)>0; msg:'endpoint wajib diisi'" binding:"required"`
 	ImageTar    *multipart.FileHeader `form:"image,required" vd:"msg:'endpoint wajib diisi'" binding:"required" swaggerignore:"true"`
 	ImageName   string                `form:"imageName,required" vd:"len($)<100 && regexp('^([\\w\\-\\.\\/]*|[\\w\\-\\.\\/]*:[\\w\\-\\.]+)$');  msg:'image harus alphanumeric atau simbol -,_,:,/ atau juga bisa dengan format <imagename>:<tag>'" binding:"required"`
+	Volumes     []string              `json:"volumes" vd:"regexp('^\/.*')"`
 }
 
 // CreateContainerAndUpload
@@ -248,6 +252,7 @@ func (m *ContainerHandler) CreateContainerAndBuildImage(ctx context.Context, c *
 		Replica:     uint64(req.Replica),
 		Endpoint:    dEndpoint,
 		UserID:      userId.(string),
+		Volumes:     req.Volumes,
 	}, req.ImageTar, req.ImageName)
 	if err != nil {
 
